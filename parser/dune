@@ -1,0 +1,16 @@
+(menhir
+ (modules ParSyntax)
+ (flags --dump)
+ (infer true))
+
+(ocamllex
+ (modules LexSyntax))
+
+(env
+ (dev
+  (flags
+   (:standard -warn-error -A))))
+
+(library
+ (name stella_parser)
+ (libraries base stdio fpath))

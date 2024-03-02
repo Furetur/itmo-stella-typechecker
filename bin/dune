@@ -1,0 +1,5 @@
+(executable
+ (public_name stella_typechecker)
+ (name main)
+ (libraries stella_typechecker stella_parser)
+ (modules main))

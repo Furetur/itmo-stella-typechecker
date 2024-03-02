@@ -1,0 +1,7 @@
+(include_subdirs unqualified)
+
+(library
+ (name stella_typechecker)
+ (preprocess
+  (pps ppx_deriving.std ppx_deriving.ord))
+ (libraries base stdio fpath))
