@@ -8,8 +8,4 @@ fn twice(k : fn(Nat) -> Nat) -> fn(Nat) -> Nat {
 }
 fn f(x : Bool, y : Nat) -> Bool { return x }
 
-fn main(n : Nat) -> Nat {
-  return (if true then twice else twice)
-    ( fn(x : Nat) { return succ(succ(x)) } )
-    (0)
-}
+
