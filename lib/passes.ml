@@ -65,4 +65,9 @@ module SingleError (Cfg : PassConfig) = struct
 
   let many_unit (xs : 'a list) ~(f : 'a -> unit t) : unit t =
     many xs ~f *> return ()
+
+  let fold (xs : 'a list) ~(init : 'acc) ~(f : 'acc -> 'a -> 'acc t) : 'acc t =
+    List.fold xs ~init:(return init) ~f:(fun acc_t x ->
+        let* acc = acc_t in
+        f acc x)
 end

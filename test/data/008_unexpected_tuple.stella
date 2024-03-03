@@ -1,0 +1,9 @@
+language core;
+
+fn f(n : Nat) -> Nat {
+  return {0, true}
+}
+
+fn main() -> Nat {
+  return 0
+}
