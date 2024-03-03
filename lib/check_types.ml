@@ -102,7 +102,7 @@ and check_dot_tuple typemap expected_type expr index =
             (Error_tuple_index_out_of_bounds
                { max_index = List.length component_types; actual_index = index })
       | Some component_type -> expect_equal_type expected_type component_type)
-  | _ -> error Error_not_a_tuple
+  | _ -> error (Error_not_a_tuple expr_type)
 
 and check_tuple typemap expected_type (exprs : expr list) =
   match expected_type with
@@ -118,6 +118,19 @@ and check_tuple typemap expected_type (exprs : expr list) =
   | None ->
       let* actual_component_types = many exprs ~f:(check_expr typemap None) in
       return (TypeTuple actual_component_types)
+
+and check_dot_record typemap expected_type record_expr field_ident =
+  let* record_type = check_expr typemap None record_expr in
+  match record_type with
+  | TypeRecord field_types -> (
+      let fields_typemap = Type_map.of_record_fields field_types in
+      match Type_map.get_type fields_typemap field_ident with
+      | None ->
+          error
+            (Error_unexpected_field_access
+               { typeT = record_type; field_name = field_ident })
+      | Some result_type -> expect_equal_type expected_type result_type)
+  | _ -> error (Error_not_a_record record_type)
 
 and check_expr typemap expected_type expr =
   in_error_context (printTree prtExpr expr)
@@ -140,7 +153,9 @@ and check_expr typemap expected_type expr =
       expect_equal_type expected_type type'
   | DotTuple (expr, index) -> check_dot_tuple typemap expected_type expr index
   | Tuple exprs -> check_tuple typemap expected_type exprs
-  | _ -> not_implemented ()
+  | DotRecord (record_expr, field_ident) ->
+      check_dot_record typemap expected_type record_expr field_ident
+  | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =
   let check_expr (expected_type, expr) =

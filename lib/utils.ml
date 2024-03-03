@@ -4,6 +4,11 @@ open Stella_parser.Parsetree
 let any bools = List.fold bools ~init:false ~f:( || )
 let not_implemented () = failwith "Not implemented"
 
+let expr_not_implemented expr =
+  let open Stella_parser.Show_tree in
+  Printf.failwithf "This type of expressions is not implemented: %s"
+    (show (showExpr expr)) ()
+
 module Type_map = struct
   type t = (string, typeT, String.comparator_witness) Map.t
 
@@ -15,9 +20,17 @@ module Type_map = struct
 
   let get_type map (StellaIdent name) = Map.find map name
 
-  let of_globals (globals_list : (stellaIdent * typeT) list) =
+  let of_list (pairs_list : (stellaIdent * typeT) list) =
     let init = Map.empty (module String) in
-    set_types init globals_list
+    set_types init pairs_list
+
+  let of_globals = of_list
+
+  let of_record_fields (field_types : recordFieldType list) =
+    let ident_type_pairs =
+      List.map field_types ~f:(fun (ARecordFieldType (ident, t)) -> (ident, t))
+    in
+    of_list ident_type_pairs
 
   let add_params map params =
     let ident_type_pairs =

@@ -9,11 +9,14 @@ type error_kind =
   | Error_unexpected_type_for_expression of { expected : typeT; actual : typeT }
   | Error_incorrect_number_of_arguments
   | Error_not_a_function
-  | Error_not_a_record
-  | Error_not_a_tuple
+  (* Tuples *)
+  | Error_not_a_tuple of typeT
   | Error_unexpected_tuple of { expected_type : typeT }
   | Error_tuple_index_out_of_bounds of { max_index : int; actual_index : int }
   | Error_unexpected_tuple_length of { expected : int }
+  (* Records *)
+  | Error_not_a_record of typeT
+  | Error_unexpected_field_access of { typeT : typeT; field_name : stellaIdent }
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -29,8 +32,10 @@ let show_kind = function
         (pp_type expected) (pp_type actual)
   | Error_not_a_function -> "ERROR_NOT_A_FUNCTION"
   | Error_incorrect_number_of_arguments -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
-  | Error_not_a_tuple -> "ERROR_NOT_A_TUPLE"
-  | Error_not_a_record -> "ERROR_NOT_A_RECORD"
+  | Error_not_a_tuple t ->
+      sprintf "ERROR_NOT_A_TUPLE: Expected a tuple but got %s" (pp_type t)
+  | Error_not_a_record t ->
+      sprintf "ERROR_NOT_A_RECORD: Expected a record but got %s" (pp_type t)
   | Error_tuple_index_out_of_bounds { max_index; actual_index } ->
       sprintf
         "ERROR_TUPLE_INDEX_OUT_OF_BOUNDS: Tuple index must be in range 1..%d, \
@@ -44,6 +49,11 @@ let show_kind = function
       sprintf
         "ERROR_UNEXPECTED_TUPLE: Expected a value of type '%s' but got a tuple"
         (pp_type expected_type)
+  | Error_unexpected_field_access { typeT; field_name = StellaIdent name } ->
+      sprintf
+        "ERROR_UNEXPECTED_FIELD_ACCESS: Field with name '%s' does not exist on \
+         type %s"
+        name (pp_type typeT)
 
 let show { kind; stacktrace } =
   let trace =
