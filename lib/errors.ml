@@ -1,7 +1,7 @@
 open Base
 open Printf
-open Stella_parser
 open Stella_parser.Parsetree
+open Utils
 
 type error_kind =
   | Error_missing_main
@@ -26,8 +26,7 @@ let show_kind = function
       sprintf "ERROR_UNDEFINED_VARIABLE: '%s'" name
   | Error_unexpected_type_for_expression { expected; actual } ->
       sprintf "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: Expected '%s' but got '%s'"
-        (pretty_print_type expected)
-        (pretty_print_type actual)
+        (pp_type expected) (pp_type actual)
   | Error_not_a_function -> "ERROR_NOT_A_FUNCTION"
   | Error_incorrect_number_of_arguments -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
   | Error_not_a_tuple -> "ERROR_NOT_A_TUPLE"
@@ -44,11 +43,12 @@ let show_kind = function
   | Error_unexpected_tuple { expected_type } ->
       sprintf
         "ERROR_UNEXPECTED_TUPLE: Expected a value of type '%s' but got a tuple"
-        (pretty_print_type expected_type)
+        (pp_type expected_type)
 
 let show { kind; stacktrace } =
   let trace =
     stacktrace
+    |> List.map ~f:format_inline_code
     |> List.mapi ~f:(fun i frame -> Printf.sprintf "%d. %s" (i + 1) frame)
     |> String.concat_lines
   in

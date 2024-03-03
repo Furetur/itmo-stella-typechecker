@@ -29,3 +29,9 @@ end
 let type_of_returnType = function
   | NoReturnType -> TypeUnit
   | SomeReturnType t -> t
+
+let format_inline_code =
+  let is_not_newline char = Char.( <> ) char '\n' && Char.( <> ) char '\t' in
+  String.filter ~f:is_not_newline
+
+let pp_type type' = format_inline_code (Stella_parser.pretty_print_type type')
