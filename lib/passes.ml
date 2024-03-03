@@ -1,5 +1,15 @@
 open Base
 
+module Result_pass_syntax = struct
+  let return = Result.return
+  let fail = Result.fail
+  let ( let* ) = Result.( >>= )
+
+  let ( *> ) a b =
+    let* _ = a in
+    b
+end
+
 module type PassConfig = sig
   type pass_state
   type pass_error
@@ -9,6 +19,11 @@ module SingleError (Cfg : PassConfig) = struct
   type 'a t = Cfg.pass_state -> (Cfg.pass_state * 'a, Cfg.pass_error) Result.t
 
   (* ----- Base ----- *)
+
+  let run_pass ~(init : Cfg.pass_state) (pass : 'r t) :
+      ('r, Cfg.pass_error) Result.t =
+    let pass_result = pass init in
+    Result.map pass_result ~f:(fun (_, r) -> r)
 
   (* - Constructors - *)
 
@@ -47,4 +62,7 @@ module SingleError (Cfg : PassConfig) = struct
           aux xs (acc @ [ b ])
     in
     aux xs []
+
+  let many_unit (xs : 'a list) ~(f : 'a -> unit t) : unit t =
+    many xs ~f *> return ()
 end

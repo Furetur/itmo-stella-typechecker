@@ -1,11 +1,10 @@
 language core;
 extend with #multiparameter-functions ;
 
-fn twice(k : fn(Nat) -> Nat) -> fn(Nat) -> Nat {
-  return fn(x : Nat) {
-    return k(k(x))
-  }
+fn f(n : Nat) -> Nat {
+  return succ(true)
 }
-fn f(x : Bool, y : Nat) -> Bool { return x }
 
-
+fn main() -> Nat {
+  return 0
+}

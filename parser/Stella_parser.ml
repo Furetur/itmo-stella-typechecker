@@ -18,5 +18,8 @@ let parse (chan : In_channel.t) : (Parsetree.program, parsing_error) Result.t =
 let pretty_print_program (tree : Parsetree.program) : string =
   Pretty_print_tree.printTree Pretty_print_tree.prtProgram tree
 
+let pretty_print_type (type' : Parsetree.typeT) : string =
+  Pretty_print_tree.printTree Pretty_print_tree.prtTypeT type'
+
 let show_program (tree : Parsetree.program) : string =
   Show_tree.show (Show_tree.showProgram tree)
