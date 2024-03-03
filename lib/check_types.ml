@@ -132,6 +132,49 @@ and check_dot_record typemap expected_type record_expr field_ident =
       | Some result_type -> expect_equal_type expected_type result_type)
   | _ -> error (Error_not_a_record record_type)
 
+and check_record typemap expected_type bindings =
+  match expected_type with
+  | Some (TypeRecord field_types) ->
+      check_known_type_record typemap field_types bindings
+  | Some t -> error (Error_not_a_record t)
+  | None -> check_unknown_record typemap bindings
+
+and check_known_type_record typemap record_field_types record_bindings =
+  let record_type = TypeRecord record_field_types in
+  let check_each_binding remaining_fields_typemap (ABinding (field_ident, expr))
+      =
+    match Type_map.get_type remaining_fields_typemap field_ident with
+    | None ->
+        error
+          (Error_unexpected_record_fields
+             { record_type; field_name = field_ident })
+    | Some field_t ->
+        check_expr typemap (Some field_t) expr
+        *>
+        let new_typemap =
+          Type_map.remove remaining_fields_typemap field_ident
+        in
+        return new_typemap
+  in
+  let field_typemap = Type_map.of_record_fields record_field_types in
+  let* remaining_required_fields =
+    fold record_bindings ~init:field_typemap ~f:check_each_binding
+  in
+  match Map.to_alist remaining_required_fields with
+  | [] -> return record_type
+  | (field_name, _) :: _ ->
+      error
+        (Error_missing_record_fields
+           { record_type; field_name = StellaIdent field_name })
+
+and check_unknown_record typemap record_bindings =
+  let check_each_binding (ABinding (ident, expr)) =
+    let* expr_t = check_expr typemap None expr in
+    return (ARecordFieldType (ident, expr_t))
+  in
+  let* record_field_types = many record_bindings ~f:check_each_binding in
+  return (TypeRecord record_field_types)
+
 and check_expr typemap expected_type expr =
   in_error_context (printTree prtExpr expr)
   $
@@ -155,6 +198,7 @@ and check_expr typemap expected_type expr =
   | Tuple exprs -> check_tuple typemap expected_type exprs
   | DotRecord (record_expr, field_ident) ->
       check_dot_record typemap expected_type record_expr field_ident
+  | Record bindings -> check_record typemap expected_type bindings
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =

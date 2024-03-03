@@ -17,6 +17,14 @@ type error_kind =
   (* Records *)
   | Error_not_a_record of typeT
   | Error_unexpected_field_access of { typeT : typeT; field_name : stellaIdent }
+  | Error_unexpected_record_fields of {
+      record_type : typeT;
+      field_name : stellaIdent;
+    }
+  | Error_missing_record_fields of {
+      record_type : typeT;
+      field_name : stellaIdent;
+    }
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -54,6 +62,18 @@ let show_kind = function
         "ERROR_UNEXPECTED_FIELD_ACCESS: Field with name '%s' does not exist on \
          type %s"
         name (pp_type typeT)
+  | Error_unexpected_record_fields
+      { record_type; field_name = StellaIdent name } ->
+      sprintf
+        "ERROR_UNEXPECTED_RECORD_FIELDS: Field with name '%s' does not exist \
+         on type %s"
+        name (pp_type record_type)
+  | Error_missing_record_fields { record_type; field_name = StellaIdent name }
+    ->
+      sprintf
+        "ERROR_MISSING_RECORD_FIELDS: Field '%s' is missing from a record of \
+         type %s"
+        name (pp_type record_type)
 
 let show { kind; stacktrace } =
   let trace =

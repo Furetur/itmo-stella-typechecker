@@ -7,7 +7,8 @@ let not_implemented () = failwith "Not implemented"
 let expr_not_implemented expr =
   let open Stella_parser.Show_tree in
   Printf.failwithf "This type of expressions is not implemented: %s"
-    (show (showExpr expr)) ()
+    (show (showExpr expr))
+    ()
 
 module Type_map = struct
   type t = (string, typeT, String.comparator_witness) Map.t
@@ -19,6 +20,7 @@ module Type_map = struct
         set_type map ident type')
 
   let get_type map (StellaIdent name) = Map.find map name
+  let remove map (StellaIdent name) = Map.remove map name
 
   let of_list (pairs_list : (stellaIdent * typeT) list) =
     let init = Map.empty (module String) in
