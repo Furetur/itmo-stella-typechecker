@@ -35,6 +35,7 @@ type error_kind =
   (* Pattern matching *)
   | Error_illegal_empty_matching
   | Error_nonexhaustive_match_patterns
+  | Error_unexpected_pattern_for_type
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -99,6 +100,7 @@ let show_kind = function
   | Error_ambiguous_sum_type -> "ERROR_AMBIGUOUS_SUM_TYPE"
   | Error_illegal_empty_matching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
   | Error_nonexhaustive_match_patterns -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
+  | Error_unexpected_pattern_for_type -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
 
 let show { kind; stacktrace } =
   let trace =

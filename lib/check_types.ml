@@ -236,7 +236,7 @@ and check_is_empty typemap expected_type expr =
         (Error_unexpected_type_for_expression
            { expected = t; actual = TypeBool })
 
-(* Sum types *)
+(* - Sum types - *)
 
 and check_injection typemap expected_type operator_type operator =
   match expected_type with
@@ -253,6 +253,27 @@ and check_inl typemap expected_type operator =
 and check_inr typemap expected_type operator =
   let select_right_type _ r_t = r_t in
   check_injection typemap expected_type select_right_type operator
+
+(* - Pattern Matching - *)
+
+and check_match typemap expected_type scrutinee cases =
+  let check_single_branch pat_ident pat_t case_expr =
+    let new_typemap = Type_map.set_type typemap pat_ident pat_t in
+    check_expr new_typemap expected_type case_expr
+  in
+  match extract_first_inl_and_inr cases with
+  | None, None -> error Error_illegal_empty_matching
+  | None, Some _ | Some _, None -> error Error_nonexhaustive_match_patterns
+  | ( Some (AMatchCase (PatternInl (PatternVar inl), inl_expr)),
+      Some (AMatchCase (PatternInl (PatternVar inr), inr_expr)) ) -> (
+      let* scrutinee_t = check_expr typemap None scrutinee in
+      match scrutinee_t with
+      | TypeSum (l_t, r_t) ->
+          let* inl_expr_t = check_single_branch inl l_t inl_expr in
+          let* inr_expr_t = check_single_branch inr r_t inr_expr in
+          expect_equal_type (Some inl_expr_t) inr_expr_t
+      | _ -> error Error_unexpected_pattern_for_type)
+  | _ -> not_implemented ()
 
 (* - Basic operators - *)
 
@@ -335,6 +356,9 @@ and check_expr typemap expected_type expr =
   (* Sum Types *)
   | Inl expr -> check_inl typemap expected_type expr
   | Inr expr -> check_inr typemap expected_type expr
+  (* Pattern matching *)
+  | Match (scrutinee, cases) ->
+      check_match typemap expected_type scrutinee cases
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =
