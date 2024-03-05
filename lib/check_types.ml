@@ -305,6 +305,11 @@ and check_logic_op typemap expected_type left right =
   check_simple_binary_op typemap expected_type ~left_t:TypeBool
     ~right_t:TypeBool ~return_t:TypeBool left right
 
+and check_equality typemap expected_type left right =
+  expect_equal_type expected_type TypeBool
+  *> let* left_t = check_expr typemap None left in
+     check_expr typemap (Some left_t) right *> return TypeBool
+
 (* - Main visitor - *)
 
 and check_expr typemap expected_type expr =
@@ -316,6 +321,10 @@ and check_expr typemap expected_type expr =
   | ConstUnit -> expect_equal_type expected_type TypeUnit
   | If (cond, then_expr, else_expr) ->
       check_if typemap expected_type cond then_expr else_expr
+  | TypeAsc (expr, typeT) ->
+      expect_equal_type expected_type typeT
+      *> check_expr typemap (Some typeT) expr
+  | Equal (l, r) | NotEqual (l, r) -> check_equality typemap expected_type l r
   (* Bools *)
   | ConstFalse | ConstTrue -> expect_equal_type expected_type TypeBool
   | LogicAnd (l, r) | LogicOr (l, r) -> check_logic_op typemap expected_type l r
