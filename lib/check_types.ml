@@ -236,6 +236,24 @@ and check_is_empty typemap expected_type expr =
         (Error_unexpected_type_for_expression
            { expected = t; actual = TypeBool })
 
+(* Sum types *)
+
+and check_injection typemap expected_type operator_type operator =
+  match expected_type with
+  | Some (TypeSum (l_t, r_t) as sum_t) ->
+      let op_t = operator_type l_t r_t in
+      check_expr typemap (Some op_t) operator *> return sum_t
+  | None -> error Error_ambiguous_sum_type
+  | Some t -> error (Error_unexpected_injection { expected = t })
+
+and check_inl typemap expected_type operator =
+  let select_left_type l_t _ = l_t in
+  check_injection typemap expected_type select_left_type operator
+
+and check_inr typemap expected_type operator =
+  let select_right_type _ r_t = r_t in
+  check_injection typemap expected_type select_right_type operator
+
 (* - Basic operators - *)
 
 and check_simple_unary_op typemap expected_type ~op_t ~return_t operand_expr =
@@ -314,6 +332,9 @@ and check_expr typemap expected_type expr =
   | Head expr -> check_head typemap expected_type expr
   | Tail expr -> check_tail typemap expected_type expr
   | IsEmpty expr -> check_is_empty typemap expected_type expr
+  (* Sum Types *)
+  | Inl expr -> check_inl typemap expected_type expr
+  | Inr expr -> check_inr typemap expected_type expr
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =

@@ -29,6 +29,12 @@ type error_kind =
   | Error_unexpected_list of { expected : typeT }
   | Error_ambiguous_list
   | Error_not_a_list of typeT
+  (* Sum types *)
+  | Error_unexpected_injection of { expected : typeT }
+  | Error_ambiguous_sum_type
+  (* Pattern matching *)
+  | Error_illegal_empty_matching
+  | Error_nonexhaustive_match_patterns
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -85,6 +91,14 @@ let show_kind = function
   | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST"
   | Error_not_a_list t ->
       sprintf "ERROR_NOT_A_LIST: Expected a list but got %s" (pp_type t)
+  | Error_unexpected_injection { expected } ->
+      sprintf
+        "ERROR_UNEXPECTED_INJECTION: Expected a value of type %s but got \
+         injection"
+        (pp_type expected)
+  | Error_ambiguous_sum_type -> "ERROR_AMBIGUOUS_SUM_TYPE"
+  | Error_illegal_empty_matching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
+  | Error_nonexhaustive_match_patterns -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
 
 let show { kind; stacktrace } =
   let trace =
