@@ -224,6 +224,48 @@ and check_head typemap expected_type expr =
 and check_tail typemap expected_type expr =
   check_expr typemap expected_type expr
 
+and check_is_empty typemap expected_type expr =
+  match expected_type with
+  | None | Some TypeBool -> (
+      let* expr_t = check_expr typemap None expr in
+      match expr_t with
+      | TypeList _ -> return TypeBool
+      | _ -> error (Error_not_a_list expr_t))
+  | Some t ->
+      error
+        (Error_unexpected_type_for_expression
+           { expected = t; actual = TypeBool })
+
+(* - Basic operators - *)
+
+and check_simple_unary_op typemap expected_type ~op_t ~return_t operand_expr =
+  expect_equal_type expected_type return_t
+  *> check_expr typemap (Some op_t) operand_expr
+  *> return return_t
+
+and check_nat_unary_op typemap expected_type operand_expr return_t =
+  check_simple_unary_op typemap expected_type ~op_t:TypeNat ~return_t
+    operand_expr
+
+and check_simple_binary_op typemap expected_type ~left_t ~right_t ~return_t
+    left_expr right_expr =
+  expect_equal_type expected_type return_t
+  *> check_expr typemap (Some left_t) left_expr
+  *> check_expr typemap (Some right_t) right_expr
+  *> return return_t
+
+and check_nat_arithmetic_op typemap expected_type left right =
+  check_simple_binary_op typemap expected_type ~left_t:TypeNat ~right_t:TypeNat
+    ~return_t:TypeNat left right
+
+and check_nat_comparison_op typemap expected_type left right =
+  check_simple_binary_op typemap expected_type ~left_t:TypeNat ~right_t:TypeNat
+    ~return_t:TypeBool left right
+
+and check_logic_op typemap expected_type left right =
+  check_simple_binary_op typemap expected_type ~left_t:TypeBool
+    ~right_t:TypeBool ~return_t:TypeBool left right
+
 (* - Main visitor - *)
 
 and check_expr typemap expected_type expr =
@@ -232,28 +274,46 @@ and check_expr typemap expected_type expr =
   match expr with
   | Application (callee, args) ->
       check_application typemap expected_type callee args
-  | ConstFalse | ConstTrue -> expect_equal_type expected_type TypeBool
   | ConstUnit -> expect_equal_type expected_type TypeUnit
-  | ConstInt _ -> expect_equal_type expected_type TypeNat
-  | Pred expr | Succ expr ->
-      expect_equal_type expected_type TypeNat
-      *> check_expr typemap (Some TypeNat) expr
   | If (cond, then_expr, else_expr) ->
       check_if typemap expected_type cond then_expr else_expr
+  (* Bools *)
+  | ConstFalse | ConstTrue -> expect_equal_type expected_type TypeBool
+  | LogicAnd (l, r) | LogicOr (l, r) -> check_logic_op typemap expected_type l r
+  | LogicNot e ->
+      check_simple_unary_op typemap expected_type ~op_t:TypeBool
+        ~return_t:TypeBool e
+  (* Nats *)
+  | ConstInt _ -> expect_equal_type expected_type TypeNat
+  | IsZero expr -> check_nat_unary_op typemap expected_type expr TypeBool
+  | Pred expr | Succ expr ->
+      check_nat_unary_op typemap expected_type expr TypeNat
+  | Multiply (l, r) | Divide (l, r) | Add (l, r) | Subtract (l, r) ->
+      check_nat_arithmetic_op typemap expected_type l r
+  | LessThan (l, r)
+  | LessThanOrEqual (l, r)
+  | GreaterThan (l, r)
+  | GreaterThanOrEqual (l, r) ->
+      check_nat_comparison_op typemap expected_type l r
+  (* Bindings *)
   | Let (pattern_bindings, body_expr) ->
       check_let typemap expected_type pattern_bindings body_expr
   | Var ident ->
       let* type' = get_var_type typemap ident in
       expect_equal_type expected_type type'
+  (* Tuples *)
   | DotTuple (expr, index) -> check_dot_tuple typemap expected_type expr index
   | Tuple exprs -> check_tuple typemap expected_type exprs
+  (* Records *)
   | DotRecord (record_expr, field_ident) ->
       check_dot_record typemap expected_type record_expr field_ident
   | Record bindings -> check_record typemap expected_type bindings
+  (* Lists *)
   | List elements -> check_list typemap expected_type elements
   | ConsList (head, tail) -> check_cons_list typemap expected_type head tail
   | Head expr -> check_head typemap expected_type expr
   | Tail expr -> check_tail typemap expected_type expr
+  | IsEmpty expr -> check_is_empty typemap expected_type expr
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =
