@@ -71,6 +71,22 @@ let rec check_application typemap expected_type callee args =
       *> return ret_type
   | _ -> error Error_not_a_function
 
+and check_abstraction typemap expected_type param_decls body_expr =
+  match expected_type with
+  | Some (TypeFun (_, _) as fun_type) ->
+      let* actual_t = check_unknown_abstraction typemap param_decls body_expr in
+      expect_equal_type (Some fun_type) actual_t
+  | Some t -> error (Error_unexpected_lambda { expected = t })
+  | None -> check_unknown_abstraction typemap param_decls body_expr
+
+and check_unknown_abstraction typemap param_decls body_expr =
+  let actual_param_types =
+    List.map param_decls ~f:(fun (AParamDecl (_, t)) -> t)
+  in
+  let new_typemap = Type_map.add_params typemap param_decls in
+  let* body_expr_t = check_expr new_typemap None body_expr in
+  return (TypeFun (actual_param_types, body_expr_t))
+
 and check_if typemap expected_type cond then_expr else_expr =
   check_expr typemap (Some TypeBool) cond
   *>
@@ -318,6 +334,8 @@ and check_expr typemap expected_type expr =
   match expr with
   | Application (callee, args) ->
       check_application typemap expected_type callee args
+  | Abstraction (params, body) ->
+      check_abstraction typemap expected_type params body
   | ConstUnit -> expect_equal_type expected_type TypeUnit
   | If (cond, then_expr, else_expr) ->
       check_if typemap expected_type cond then_expr else_expr

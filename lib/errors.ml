@@ -9,6 +9,7 @@ type error_kind =
   | Error_unexpected_type_for_expression of { expected : typeT; actual : typeT }
   | Error_incorrect_number_of_arguments
   | Error_not_a_function
+  | Error_unexpected_lambda of { expected : typeT }
   (* Tuples *)
   | Error_not_a_tuple of typeT
   | Error_unexpected_tuple of { expected_type : typeT }
@@ -101,6 +102,9 @@ let show_kind = function
   | Error_illegal_empty_matching -> "ERROR_ILLEGAL_EMPTY_MATCHING"
   | Error_nonexhaustive_match_patterns -> "ERROR_NONEXHAUSTIVE_MATCH_PATTERNS"
   | Error_unexpected_pattern_for_type -> "ERROR_UNEXPECTED_PATTERN_FOR_TYPE"
+  | Error_unexpected_lambda { expected } ->
+      sprintf "ERROR_UNEXPECTED_LAMBDA: Expected %s but got a lambda"
+        (pp_type expected)
 
 let show { kind; stacktrace } =
   let trace =
