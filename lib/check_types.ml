@@ -92,6 +92,8 @@ and check_let typemap expected_type pattern_bindings body_expr =
   in
   check_expr new_typemap expected_type body_expr
 
+(* - Tuple - *)
+
 and check_dot_tuple typemap expected_type expr index =
   let* expr_type = check_expr typemap None expr in
   match expr_type with
@@ -118,6 +120,8 @@ and check_tuple typemap expected_type (exprs : expr list) =
   | None ->
       let* actual_component_types = many exprs ~f:(check_expr typemap None) in
       return (TypeTuple actual_component_types)
+
+(* - Record - *)
 
 and check_dot_record typemap expected_type record_expr field_ident =
   let* record_type = check_expr typemap None record_expr in
@@ -175,6 +179,53 @@ and check_unknown_record typemap record_bindings =
   let* record_field_types = many record_bindings ~f:check_each_binding in
   return (TypeRecord record_field_types)
 
+(* - List - *)
+
+and check_list typemap expected_type elements =
+  let check_each_element expected_element_type el_expr =
+    check_expr typemap expected_element_type el_expr *> return ()
+  in
+  match expected_type with
+  | Some (TypeList element_type as list_type) ->
+      many_unit elements ~f:(check_each_element (Some element_type))
+      *> return list_type
+  | Some t -> error (Error_unexpected_list { expected = t })
+  | None -> check_unknown_list typemap elements
+
+and check_unknown_list typemap elements =
+  match elements with
+  | [] -> error Error_ambiguous_list
+  | el :: elements ->
+      let* first_el_type = check_expr typemap None el in
+      check_list typemap (Some first_el_type) elements
+
+and check_cons_list typemap expected_type head tail =
+  match expected_type with
+  | Some (TypeList element_type as list_type) ->
+      check_expr typemap (Some element_type) head
+      *> check_expr typemap (Some list_type) tail
+  | Some t -> error (Error_unexpected_list { expected = t })
+  | None ->
+      let* head_t = check_expr typemap None head in
+      let list_t = TypeList head_t in
+      check_expr typemap (Some list_t) tail
+
+and check_head typemap expected_type expr =
+  match expected_type with
+  | Some t ->
+      let list_t = TypeList t in
+      check_expr typemap (Some list_t) expr *> return t
+  | None -> (
+      let* expr_t = check_expr typemap None expr in
+      match expr_t with
+      | TypeList el_t -> return el_t
+      | t -> error (Error_not_a_list t))
+
+and check_tail typemap expected_type expr =
+  check_expr typemap expected_type expr
+
+(* - Main visitor - *)
+
 and check_expr typemap expected_type expr =
   in_error_context (printTree prtExpr expr)
   $
@@ -199,6 +250,10 @@ and check_expr typemap expected_type expr =
   | DotRecord (record_expr, field_ident) ->
       check_dot_record typemap expected_type record_expr field_ident
   | Record bindings -> check_record typemap expected_type bindings
+  | List elements -> check_list typemap expected_type elements
+  | ConsList (head, tail) -> check_cons_list typemap expected_type head tail
+  | Head expr -> check_head typemap expected_type expr
+  | Tail expr -> check_tail typemap expected_type expr
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =

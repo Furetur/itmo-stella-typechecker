@@ -25,6 +25,10 @@ type error_kind =
       record_type : typeT;
       field_name : stellaIdent;
     }
+  (* Lists *)
+  | Error_unexpected_list of { expected : typeT }
+  | Error_ambiguous_list
+  | Error_not_a_list of typeT
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -74,6 +78,13 @@ let show_kind = function
         "ERROR_MISSING_RECORD_FIELDS: Field '%s' is missing from a record of \
          type %s"
         name (pp_type record_type)
+  | Error_unexpected_list { expected } ->
+      sprintf
+        "ERROR_UNEXPECTED_LIST: Expected a value of type %s but got a list"
+        (pp_type expected)
+  | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST"
+  | Error_not_a_list t ->
+      sprintf "ERROR_NOT_A_LIST: Expected a list but got %s" (pp_type t)
 
 let show { kind; stacktrace } =
   let trace =
