@@ -291,6 +291,20 @@ and check_match typemap expected_type scrutinee cases =
       | _ -> error Error_unexpected_pattern_for_type)
   | _ -> not_implemented ()
 
+(* - Recursion - *)
+
+and check_fix typemap expected_type expr =
+  let* expr_t = check_expr typemap None expr in
+  match expr_t with
+  | TypeFun (_, ret_t) ->
+      let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
+      (* Fake-check the expression once again to require that it has the correct type *)
+      check_expr typemap (Some needed_fun_t) expr
+      *>
+      let result_type = ret_t in
+      expect_equal_type expected_type result_type *> return result_type
+  | _ -> error Error_not_a_function
+
 (* - Basic operators - *)
 
 and check_simple_unary_op typemap expected_type ~op_t ~return_t operand_expr =
@@ -386,6 +400,8 @@ and check_expr typemap expected_type expr =
   (* Pattern matching *)
   | Match (scrutinee, cases) ->
       check_match typemap expected_type scrutinee cases
+  (* Recursion *)
+  | Fix expr -> check_fix typemap expected_type expr
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =
