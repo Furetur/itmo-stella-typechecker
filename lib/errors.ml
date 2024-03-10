@@ -14,6 +14,7 @@ type error_kind =
   | Error_unexpected_type_for_parameter of { expected : typeT; actual : typeT }
   | Error_unknown
   | Error_incorrect_arity_of_main
+  | Error_unexpected_type_for_expressions_fix
   (* Tuples *)
   | Error_not_a_tuple of typeT
   | Error_unexpected_tuple of { expected_type : typeT }
@@ -124,6 +125,9 @@ let show_kind = function
       sprintf
         "ERROR_UNEXPECTED_RECORD: Expected a value of type %s but got a record"
         (pp_type t)
+  | Error_unexpected_type_for_expressions_fix ->
+      "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: Fixpoint combinator expects \
+       function of type fn(T) -> T"
 
 let show { kind; stacktrace } =
   let trace =
