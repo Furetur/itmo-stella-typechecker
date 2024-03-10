@@ -2,11 +2,12 @@ open Base
 open Stella_parser.Parsetree
 
 let any bools = List.fold bools ~init:false ~f:( || )
-let not_implemented () = failwith "Not implemented"
+let not_implemented () = failwith "ERROR_NOT_IMPLEMENTED"
 
 let expr_not_implemented expr =
   let open Stella_parser.Show_tree in
-  Printf.failwithf "This type of expressions is not implemented: %s"
+  Printf.failwithf
+    "ERROR_NOT_IMPLEMENTED: This type of expressions is not implemented: %s"
     (show (showExpr expr))
     ()
 
@@ -49,7 +50,9 @@ let format_inline_code =
   let is_not_newline char = Char.( <> ) char '\n' && Char.( <> ) char '\t' in
   String.filter ~f:is_not_newline
 
-let pp_type type' = format_inline_code (Stella_parser.pretty_print_type type')
+let pp_type type' =
+  Stella_parser.Show_tree.show (Stella_parser.Show_tree.showTypeT type')
+(* format_inline_code (Stella_parser.pretty_print_type type') *)
 
 let extract_first_inl_and_inr match_cases =
   let is_inl = function AMatchCase (PatternInl _, _) -> true | _ -> false in

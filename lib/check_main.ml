@@ -1,16 +1,23 @@
 open Base
 open Stella_parser.Parsetree
-open Utils
 open Errors
+open Passes.Result_pass_syntax
 
 let main_function_name = "main"
 
-let is_main_function = function
-  | DeclFun (_, StellaIdent name, _, _, _, _, _) ->
-      String.equal name main_function_name
-  | _ -> false
+let as_main_function = function
+  | DeclFun (_, StellaIdent name, params, ret_t, _, _, _)
+    when String.equal name main_function_name ->
+      Some (params, ret_t)
+  | _ -> None
+
+let find_last_main_function decls =
+  List.map decls ~f:as_main_function |> List.filter_opt |> List.last
 
 let check_main (AProgram (_, _, decls)) : unit pass_result =
-  let has_main_fn = any (List.map decls ~f:is_main_function) in
-  if has_main_fn then Ok ()
-  else Error (whole_file_error Errors.Error_missing_main)
+  match find_last_main_function decls with
+  | None -> fail (whole_file_error Errors.Error_missing_main)
+  | Some (params, _) ->
+      if List.length params <> 1 then
+        fail (whole_file_error Error_incorrect_arity_of_main)
+      else return ()

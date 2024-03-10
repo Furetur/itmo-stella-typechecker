@@ -26,6 +26,13 @@ let in_error_context context f =
   let* result = f in
   set old_state *> return result
 
+let in_expr_error_context context expected_type f =
+  let type' =
+    match expected_type with Some t -> pp_type t | None -> "Unknown type"
+  in
+  let context = Printf.sprintf "%s <--- %s" context type' in
+  in_error_context context f
+
 let error kind =
   let* { stacktrace; _ } = get in
   fail { kind; stacktrace }
@@ -46,7 +53,7 @@ let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
   | Some expected_type ->
-      if Stdlib.( == ) expected_type actual_type then return actual_type
+      if Stdlib.( = ) expected_type actual_type then return actual_type
       else
         error
           (Error_unexpected_type_for_expression
@@ -72,10 +79,29 @@ let rec check_application typemap expected_type callee args =
   | _ -> error Error_not_a_function
 
 and check_abstraction typemap expected_type param_decls body_expr =
+  let expect_equal_param_types (expected, actual) =
+    if Stdlib.( = ) expected actual then return ()
+    else error (Error_unexpected_type_for_parameter { expected; actual })
+  in
+  let check_params expected_param_types =
+    let actual_param_types =
+      List.map param_decls ~f:(fun (AParamDecl (_, t)) -> t)
+    in
+    let expected_n_params = List.length expected_param_types in
+    let* type_pairs =
+      zip_or_error
+        (Error_unexpected_number_of_parameters_in_lambda
+           { expected = expected_n_params })
+        expected_param_types actual_param_types
+    in
+    many_unit type_pairs ~f:expect_equal_param_types
+  in
   match expected_type with
-  | Some (TypeFun (_, _) as fun_type) ->
-      let* actual_t = check_unknown_abstraction typemap param_decls body_expr in
-      expect_equal_type (Some fun_type) actual_t
+  | Some (TypeFun (expected_param_types, expected_ret_t)) ->
+      Stdio.print_endline "from check_abstraction";
+      check_params expected_param_types
+      *> check_abstraction_body typemap (Some expected_ret_t) param_decls
+           body_expr
   | Some t -> error (Error_unexpected_lambda { expected = t })
   | None -> check_unknown_abstraction typemap param_decls body_expr
 
@@ -83,16 +109,24 @@ and check_unknown_abstraction typemap param_decls body_expr =
   let actual_param_types =
     List.map param_decls ~f:(fun (AParamDecl (_, t)) -> t)
   in
+  let* ret_t = check_abstraction_body typemap None param_decls body_expr in
+  return (TypeFun (actual_param_types, ret_t))
+
+and check_abstraction_body typemap expected_type param_decls body_expr =
   let new_typemap = Type_map.add_params typemap param_decls in
-  let* body_expr_t = check_expr new_typemap None body_expr in
-  return (TypeFun (actual_param_types, body_expr_t))
+  check_expr new_typemap expected_type body_expr
 
 and check_if typemap expected_type cond then_expr else_expr =
   check_expr typemap (Some TypeBool) cond
   *>
-  let* then_type = check_expr typemap None then_expr in
-  check_expr typemap (Some then_type) else_expr
-  *> expect_equal_type expected_type then_type
+  match expected_type with
+  | Some expected_type ->
+      check_expr typemap (Some expected_type) then_expr
+      *> check_expr typemap (Some expected_type) else_expr
+      *> return expected_type
+  | None ->
+      let* then_type = check_expr typemap None then_expr in
+      check_expr typemap (Some then_type) else_expr
 
 and check_let typemap expected_type pattern_bindings body_expr =
   let check_each_binding_and_add_to_typemap typemap
@@ -156,7 +190,7 @@ and check_record typemap expected_type bindings =
   match expected_type with
   | Some (TypeRecord field_types) ->
       check_known_type_record typemap field_types bindings
-  | Some t -> error (Error_not_a_record t)
+  | Some t -> error (Error_unexpected_record t)
   | None -> check_unknown_record typemap bindings
 
 and check_known_type_record typemap record_field_types record_bindings =
@@ -213,7 +247,7 @@ and check_unknown_list typemap elements =
   | [] -> error Error_ambiguous_list
   | el :: elements ->
       let* first_el_type = check_expr typemap None el in
-      check_list typemap (Some first_el_type) elements
+      check_list typemap (Some (TypeList first_el_type)) elements
 
 and check_cons_list typemap expected_type head tail =
   match expected_type with
@@ -238,7 +272,14 @@ and check_head typemap expected_type expr =
       | t -> error (Error_not_a_list t))
 
 and check_tail typemap expected_type expr =
-  check_expr typemap expected_type expr
+  match expected_type with
+  | Some (TypeList _ as list_t) -> check_expr typemap (Some list_t) expr
+  | None -> (
+      let* expr_t = check_expr typemap None expr in
+      match expr_t with
+      | TypeList _ as type_list -> return type_list
+      | t -> error (Error_not_a_list t))
+  | Some expected -> error (Error_unexpected_list { expected })
 
 and check_is_empty typemap expected_type expr =
   match expected_type with
@@ -277,6 +318,8 @@ and check_match typemap expected_type scrutinee cases =
     let new_typemap = Type_map.set_type typemap pat_ident pat_t in
     check_expr new_typemap expected_type case_expr
   in
+  check_not_implemented_patterns cases
+  *>
   match extract_first_inl_and_inr cases with
   | None, None -> error Error_illegal_empty_matching
   | None, Some _ | Some _, None -> error Error_nonexhaustive_match_patterns
@@ -290,6 +333,13 @@ and check_match typemap expected_type scrutinee cases =
           expect_equal_type (Some inl_expr_t) inr_expr_t
       | _ -> error Error_unexpected_pattern_for_type)
   | _ -> not_implemented ()
+
+and check_not_implemented_patterns cases =
+  let check_each_case = function
+    | AMatchCase (PatternInl _, _) | AMatchCase (PatternInr _, _) -> return ()
+    | _ -> not_implemented ()
+  in
+  many_unit cases ~f:check_each_case
 
 (* - Recursion - *)
 
@@ -343,7 +393,7 @@ and check_equality typemap expected_type left right =
 (* - Main visitor - *)
 
 and check_expr typemap expected_type expr =
-  in_error_context (printTree prtExpr expr)
+  in_expr_error_context (printTree prtExpr expr) expected_type
   $
   match expr with
   | Application (callee, args) ->

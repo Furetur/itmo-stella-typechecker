@@ -10,6 +10,10 @@ type error_kind =
   | Error_incorrect_number_of_arguments
   | Error_not_a_function
   | Error_unexpected_lambda of { expected : typeT }
+  | Error_unexpected_number_of_parameters_in_lambda of { expected : int }
+  | Error_unexpected_type_for_parameter of { expected : typeT; actual : typeT }
+  | Error_unknown
+  | Error_incorrect_arity_of_main
   (* Tuples *)
   | Error_not_a_tuple of typeT
   | Error_unexpected_tuple of { expected_type : typeT }
@@ -18,6 +22,7 @@ type error_kind =
   (* Records *)
   | Error_not_a_record of typeT
   | Error_unexpected_field_access of { typeT : typeT; field_name : stellaIdent }
+  | Error_unexpected_record of typeT
   | Error_unexpected_record_fields of {
       record_type : typeT;
       field_name : stellaIdent;
@@ -105,6 +110,20 @@ let show_kind = function
   | Error_unexpected_lambda { expected } ->
       sprintf "ERROR_UNEXPECTED_LAMBDA: Expected %s but got a lambda"
         (pp_type expected)
+  | Error_unknown -> "ERROR_UNKNOWN"
+  | Error_unexpected_type_for_parameter { actual; expected } ->
+      sprintf "ERROR_UNEXPECTED_TYPE_FOR_PARAMETER: Expected %s but got %s"
+        (pp_type expected) (pp_type actual)
+  | Error_incorrect_arity_of_main -> "ERROR_INCORRECT_ARITY_OF_MAIN"
+  | Error_unexpected_number_of_parameters_in_lambda { expected } ->
+      sprintf
+        "ERROR_UNEXPECTED_NUMBER_OF_PARAMETERS_IN_LAMBDA: Expected %d \
+         parameters"
+        expected
+  | Error_unexpected_record t ->
+      sprintf
+        "ERROR_UNEXPECTED_RECORD: Expected a value of type %s but got a record"
+        (pp_type t)
 
 let show { kind; stacktrace } =
   let trace =
