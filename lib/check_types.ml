@@ -30,7 +30,7 @@ let in_expr_error_context context expected_type f =
   let type' =
     match expected_type with Some t -> pp_type t | None -> "Unknown type"
   in
-  let context = Printf.sprintf "%s <--- %s" context type' in
+  let context = Printf.sprintf "%s <--- Expected: %s" context type' in
   in_error_context context f
 
 let error kind =

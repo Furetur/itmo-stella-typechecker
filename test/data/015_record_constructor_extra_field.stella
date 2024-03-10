@@ -4,6 +4,6 @@ fn f(r : Nat) -> { a : Nat, b : Bool } {
   return { a = 0, c = succ(true) }
 }
 
-fn main() -> Nat {
+fn main(x : Nat) -> Nat {
   return 0
 }
