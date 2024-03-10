@@ -272,14 +272,10 @@ and check_head typemap expected_type expr =
       | t -> error (Error_not_a_list t))
 
 and check_tail typemap expected_type expr =
-  match expected_type with
-  | Some (TypeList _ as list_t) -> check_expr typemap (Some list_t) expr
-  | None -> (
-      let* expr_t = check_expr typemap None expr in
-      match expr_t with
-      | TypeList _ as type_list -> return type_list
-      | t -> error (Error_not_a_list t))
-  | Some expected -> error (Error_unexpected_list { expected })
+  let* expr_t = check_expr typemap None expr in
+  match expr_t with
+  | TypeList _ as list_t -> expect_equal_type expected_type list_t
+  | t -> error (Error_not_a_list t)
 
 and check_is_empty typemap expected_type expr =
   match expected_type with
