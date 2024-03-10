@@ -51,8 +51,7 @@ let format_inline_code =
   String.filter ~f:is_not_newline
 
 let pp_type type' =
-  Stella_parser.Show_tree.show (Stella_parser.Show_tree.showTypeT type')
-(* format_inline_code (Stella_parser.pretty_print_type type') *)
+  format_inline_code (Stella_parser.pretty_print_type type')
 
 let extract_first_inl_and_inr match_cases =
   let is_inl = function AMatchCase (PatternInl _, _) -> true | _ -> false in
