@@ -54,13 +54,16 @@ SomePatternData.  PatternData ::= "=" Pattern ;
 NoExprData.   ExprData ::= ;
 SomeExprData. ExprData ::= "=" Expr ;
 
+PatternAsc.     Pattern ::= Pattern "as" Type ;
 PatternVariant. Pattern ::= "<|" StellaIdent PatternData "|>" ;
 PatternInl.     Pattern ::= "inl" "(" Pattern ")" ;
 PatternInr.     Pattern ::= "inr" "(" Pattern ")" ;
 PatternTuple.   Pattern ::= "{" [Pattern] "}" ;
 PatternRecord.  Pattern ::= "{" [LabelledPattern] "}" ;
 PatternList.    Pattern ::= "[" [Pattern] "]" ;
-PatternCons.    Pattern ::= "(" Pattern "," Pattern ")" ;
+PatternCons.    Pattern ::= "cons" "(" Pattern "," Pattern ")" ;
+patternCons.    Pattern ::= "(" Pattern "," Pattern ")" ;
+define patternCons h t = PatternCons h t ;
 PatternFalse.   Pattern ::= "false" ;
 PatternTrue.    Pattern ::= "true" ;
 PatternUnit.    Pattern ::= "unit" ;

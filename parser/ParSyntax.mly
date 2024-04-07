@@ -7,7 +7,7 @@ open AbsSyntax
 open Lexing
 %}
 
-%token KW_language KW_core KW_extend KW_with KW_fn KW_return KW_generic KW_type KW_exception KW_variant KW_inline KW_throws KW_inl KW_inr KW_false KW_true KW_unit KW_succ KW_if KW_then KW_else KW_let KW_in KW_letrec KW_as KW_cast KW_match KW_or KW_and KW_new KW_cons KW_throw KW_try KW_catch KW_not KW_fix KW_fold KW_unfold KW_forall KW_Bool KW_Nat KW_Unit KW_Top KW_Bot
+%token KW_language KW_core KW_extend KW_with KW_fn KW_return KW_generic KW_type KW_exception KW_variant KW_inline KW_throws KW_as KW_inl KW_inr KW_cons KW_false KW_true KW_unit KW_succ KW_if KW_then KW_else KW_let KW_in KW_letrec KW_cast KW_match KW_or KW_and KW_new KW_throw KW_try KW_catch KW_not KW_fix KW_fold KW_unfold KW_forall KW_Bool KW_Nat KW_Unit KW_Top KW_Bot
 
 %token SYMB1 /* µ */
 %token SYMB2 /* , */
@@ -361,13 +361,15 @@ exprData : /* empty */ { NoExprData  }
   | SYMB10 expr { SomeExprData $2 }
   ;
 
-pattern : SYMB15 stellaIdent patternData SYMB16 { PatternVariant ($2, $3) }
+pattern : pattern KW_as typeT { PatternAsc ($1, $3) }
+  | SYMB15 stellaIdent patternData SYMB16 { PatternVariant ($2, $3) }
   | KW_inl SYMB4 pattern SYMB5 { PatternInl $3 }
   | KW_inr SYMB4 pattern SYMB5 { PatternInr $3 }
   | SYMB6 pattern_list SYMB7 { PatternTuple $2 }
   | SYMB6 labelledPattern_list SYMB7 { PatternRecord $2 }
   | SYMB8 pattern_list SYMB9 { PatternList $2 }
-  | SYMB4 pattern SYMB2 pattern SYMB5 { PatternCons ($2, $4) }
+  | KW_cons SYMB4 pattern SYMB2 pattern SYMB5 { PatternCons ($3, $5) }
+  | SYMB4 pattern SYMB2 pattern SYMB5 { patternCons ($2, $4) }
   | KW_false { PatternFalse  }
   | KW_true { PatternTrue  }
   | KW_unit { PatternUnit  }

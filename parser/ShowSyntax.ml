@@ -215,6 +215,9 @@ and showExprData (e : AbsSyntax.exprData) : showable =
 
 and showPattern (e : AbsSyntax.pattern) : showable =
   match e with
+  | AbsSyntax.PatternAsc (pattern, type') ->
+      s2s "PatternAsc" >> c2s ' ' >> c2s '(' >> showPattern pattern >> s2s ", "
+      >> showTypeT type' >> c2s ')'
   | AbsSyntax.PatternVariant (stellaident, patterndata) ->
       s2s "PatternVariant" >> c2s ' ' >> c2s '('
       >> showStellaIdent stellaident

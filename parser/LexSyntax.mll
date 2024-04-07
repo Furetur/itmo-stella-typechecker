@@ -13,7 +13,7 @@ let _ = List.iter (fun (kwd, tok) -> Hashtbl.add symbol_table kwd tok)
 
 let resword_table = Hashtbl.create 44
 let _ = List.iter (fun (kwd, tok) -> Hashtbl.add resword_table kwd tok)
-                  [("language", KW_language);("core", KW_core);("extend", KW_extend);("with", KW_with);("fn", KW_fn);("return", KW_return);("generic", KW_generic);("type", KW_type);("exception", KW_exception);("variant", KW_variant);("inline", KW_inline);("throws", KW_throws);("inl", KW_inl);("inr", KW_inr);("false", KW_false);("true", KW_true);("unit", KW_unit);("succ", KW_succ);("if", KW_if);("then", KW_then);("else", KW_else);("let", KW_let);("in", KW_in);("letrec", KW_letrec);("as", KW_as);("cast", KW_cast);("match", KW_match);("or", KW_or);("and", KW_and);("new", KW_new);("cons", KW_cons);("throw", KW_throw);("try", KW_try);("catch", KW_catch);("not", KW_not);("fix", KW_fix);("fold", KW_fold);("unfold", KW_unfold);("forall", KW_forall);("Bool", KW_Bool);("Nat", KW_Nat);("Unit", KW_Unit);("Top", KW_Top);("Bot", KW_Bot)]
+                  [("language", KW_language);("core", KW_core);("extend", KW_extend);("with", KW_with);("fn", KW_fn);("return", KW_return);("generic", KW_generic);("type", KW_type);("exception", KW_exception);("variant", KW_variant);("inline", KW_inline);("throws", KW_throws);("as", KW_as);("inl", KW_inl);("inr", KW_inr);("cons", KW_cons);("false", KW_false);("true", KW_true);("unit", KW_unit);("succ", KW_succ);("if", KW_if);("then", KW_then);("else", KW_else);("let", KW_let);("in", KW_in);("letrec", KW_letrec);("cast", KW_cast);("match", KW_match);("or", KW_or);("and", KW_and);("new", KW_new);("throw", KW_throw);("try", KW_try);("catch", KW_catch);("not", KW_not);("fix", KW_fix);("fold", KW_fold);("unfold", KW_unfold);("forall", KW_forall);("Bool", KW_Bool);("Nat", KW_Nat);("Unit", KW_Unit);("Top", KW_Top);("Bot", KW_Bot)]
 
 let unescapeInitTail (s:string) : string =
   let rec unesc s = match s with
@@ -76,8 +76,8 @@ rule token =
       | _letter _idchar*
                 { let l = lexeme lexbuf in try Hashtbl.find resword_table l with Not_found -> TOK_Ident l }
       | _digit+ { TOK_Integer (int_of_string (lexeme lexbuf)) }
-      | _digit+ '.' _digit+ ('e' ('-')? _digit+)?
-                { TOK_Double (float_of_string (lexeme lexbuf)) }
+      (* | _digit+ '.' _digit+ ('e' ('-')? _digit+)?
+                { TOK_Double (float_of_string (lexeme lexbuf)) } *)
       | '\"' (([^ '\"' '\\' '\n']) | ('\\' ('\"' | '\\' | '\'' | 'n' | 't' | 'r')))* '\"'
                 { TOK_String (unescapeInitTail (lexeme lexbuf)) }
       | '\'' (([^ '\'' '\\']) | ('\\' ('\\' | '\'' | 'n' | 't' | 'r'))) '\''

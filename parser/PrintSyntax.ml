@@ -355,6 +355,9 @@ and prtExprData (i : int) (e : AbsSyntax.exprData) : doc =
 
 and prtPattern (i : int) (e : AbsSyntax.pattern) : doc =
   match e with
+  | AbsSyntax.PatternAsc (pattern, type_) ->
+      prPrec i 0
+        (concatD [ prtPattern 0 pattern; render "as"; prtTypeT 0 type_ ])
   | AbsSyntax.PatternVariant (stellaident, patterndata) ->
       prPrec i 0
         (concatD
@@ -388,6 +391,7 @@ and prtPattern (i : int) (e : AbsSyntax.pattern) : doc =
       prPrec i 0
         (concatD
            [
+             render "cons";
              render "(";
              prtPattern 0 pattern1;
              render ",";

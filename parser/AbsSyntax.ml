@@ -58,6 +58,7 @@ and patternData = NoPatternData | SomePatternData of pattern
 and exprData = NoExprData | SomeExprData of expr
 
 and pattern =
+  | PatternAsc of pattern * typeT
   | PatternVariant of stellaIdent * patternData
   | PatternInl of pattern
   | PatternInr of pattern
@@ -137,3 +138,7 @@ and patternBinding = APatternBinding of pattern * expr
 and variantFieldType = AVariantFieldType of stellaIdent * optionalTyping
 and recordFieldType = ARecordFieldType of stellaIdent * typeT
 and typing = ATyping of expr * typeT
+
+(* defined constructors *)
+
+let patternCons (h, t) = PatternCons (h, t)

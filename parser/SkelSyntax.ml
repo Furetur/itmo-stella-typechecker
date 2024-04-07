@@ -99,6 +99,7 @@ module SkelSyntax = struct
 
   and transPattern (x : pattern) : result =
     match x with
+    | PatternAsc (pattern, type') -> failure x
     | PatternVariant (stellaident, patterndata) -> failure x
     | PatternInl pattern -> failure x
     | PatternInr pattern -> failure x
