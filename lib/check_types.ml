@@ -320,7 +320,7 @@ and check_match typemap expected_type scrutinee cases =
   | None, None -> error Error_illegal_empty_matching
   | None, Some _ | Some _, None -> error Error_nonexhaustive_match_patterns
   | ( Some (AMatchCase (PatternInl (PatternVar inl), inl_expr)),
-      Some (AMatchCase (PatternInl (PatternVar inr), inr_expr)) ) -> (
+      Some (AMatchCase (PatternInr (PatternVar inr), inr_expr)) ) -> (
       let* scrutinee_t = check_expr typemap None scrutinee in
       match scrutinee_t with
       | TypeSum (l_t, r_t) ->
