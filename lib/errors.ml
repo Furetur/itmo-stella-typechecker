@@ -103,7 +103,7 @@ let show_kind = function
       sprintf
         "ERROR_UNEXPECTED_LIST: Expected a value of type %s but got a list"
         (pp_type expected)
-  | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST / ERROR_AMBIGUOUS_LIST_TYPE"
+  | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST_TYPE"
   | Error_not_a_list t ->
       sprintf "ERROR_NOT_A_LIST: Expected a list but got %s" (pp_type t)
   | Error_unexpected_injection { expected } ->

@@ -4,8 +4,13 @@ import subprocess
 from typing import Sequence
 import pytest
 
-from .discover_tests import OK_RESULT, ErrorResult, TestResult, SingleTest, show_result
-from .constants import DEFAULT_EXECUTABLE_PATH, ERROR_PARSE_ERROR, ERROR_REGEX, REQUIRED_EXTENTIONS
+from .discover_tests import OK_RESULT, ErrorResult, OkResult, TestResult, SingleTest
+from .constants import (
+    DEFAULT_EXECUTABLE_PATH,
+    ERROR_PARSE_ERROR,
+    ERROR_REGEX,
+    REQUIRED_EXTENTIONS,
+)
 
 
 EXECUTABLE_PATH = os.environ.get("TYPECHECKER_BINARY")
@@ -20,22 +25,30 @@ def run_binary(args: Sequence[str]) -> TestResult:
     if result.returncode == 0:
         return OK_RESULT
     if "Parse error" in result.stdout:
-        return ErrorResult(ERROR_PARSE_ERROR)
+        return ErrorResult({ERROR_PARSE_ERROR})
     errors = re.findall(ERROR_REGEX, result.stdout)
     assert (
         errors
     ), "Typechecker returned non-zero exit code but error type was not found"
-    return ErrorResult(errors[0])
+    return ErrorResult(set(errors))
 
 
 def test_has_optional_extentions(test: SingleTest) -> bool:
     return len(set(test.extentions) - REQUIRED_EXTENTIONS) > 0
 
+
 def pytest_interpret_result(test: SingleTest, actual_test_result: TestResult) -> None:
     if test_has_optional_extentions(test):
         pytest.skip()
-    if test.expected_result != actual_test_result:
-        pytest.fail(f"Expected {show_result(test.expected_result)} but got {show_result(actual_test_result)}")
+    match (test.expected_result, actual_test_result):
+        case (OkResult(), OkResult()):
+            pass
+        case (ErrorResult(expected), ErrorResult(actual)) if actual.issubset(expected):
+            pass
+        case (ErrorResult(expected), ErrorResult(actual)):
+            pytest.fail(f"Expected one of {expected} but got {actual}")
+        case _:
+            pytest.fail(f"Expected {test.expected_result} but got {actual_test_result}")
 
 
 def run_test(test: SingleTest):
