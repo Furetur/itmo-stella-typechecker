@@ -43,6 +43,8 @@ type error_kind =
   | Error_illegal_empty_matching
   | Error_nonexhaustive_match_patterns
   | Error_unexpected_pattern_for_type
+  (* Errors *)
+  | Error_ambiguous_panic_type
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -128,6 +130,7 @@ let show_kind = function
   | Error_unexpected_type_for_expressions_fix ->
       "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: Fixpoint combinator expects \
        function of type fn(T) -> T"
+  | Error_ambiguous_panic_type -> "ERROR_AMBIGUOUS_PANIC_TYPE"
 
 let show { kind; stacktrace } =
   let trace =

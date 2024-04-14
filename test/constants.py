@@ -22,9 +22,10 @@ REQUIRED_EXTENTIONS = {
     "#pairs",
     "#let-bindings",
     "#nullary-functions",
-    "#multiparameter-functions"
+    "#multiparameter-functions",
+    "#fixpoint-combinator",
     "#sum-types",
     "#lists",
-    "#records"
+    "#records",
     "#panic",
 }

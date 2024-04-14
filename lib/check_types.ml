@@ -384,6 +384,13 @@ and check_nat_rec typemap expected_type n z s =
      let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
      check_expr typemap (Some expected_s_t) s *> return t
 
+(* - Errors - *)
+
+and check_panic _ expected_type =
+  match expected_type with
+  | None -> error Error_ambiguous_panic_type
+  | Some t -> return t
+
 (* - Basic operators - *)
 
 and check_simple_unary_op typemap expected_type ~op_t ~return_t operand_expr =
@@ -482,6 +489,8 @@ and check_expr typemap expected_type expr =
   (* Recursion *)
   | Fix expr -> check_fix typemap expected_type expr
   | NatRec (n, z, s) -> check_nat_rec typemap expected_type n z s
+  (* Errors *)
+  | Panic -> check_panic typemap expected_type
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =
