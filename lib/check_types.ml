@@ -5,8 +5,6 @@ open Utils
 open Pattern_matching_utils
 open Errors
 
-let ( $ ) f x = f x
-
 (* --- Pass Setup --- *)
 
 type state = { stacktrace : string list; typemap : Type_map.t }
@@ -480,7 +478,7 @@ and check_sequence expected_type expr1 expr2 =
 
 and check_expr expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type
-  $
+  @@
   match expr with
   | Sequence (expr1, expr2) -> check_sequence expected_type expr1 expr2
   | Application (callee, args) -> check_application expected_type callee args
@@ -561,14 +559,14 @@ and check_fun_decl params ret_type body_decls return_expr : unit t =
   | _ :: _ -> not_implemented ()
   | [] ->
       in_return_error_context
-      $
+      @@
       let ret_type = Some (type_of_returnType ret_type) in
       with_param_bindings params
       @@ (check_expr ret_type return_expr *> return ())
 
 and check_decl decl : unit t =
   in_error_context (printTree prtDecl decl)
-  $
+  @@
   match decl with
   | DeclFun (_, _, params, ret_type, _, body_decls, return_expr) ->
       check_fun_decl params ret_type body_decls return_expr
