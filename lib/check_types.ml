@@ -59,12 +59,6 @@ let expect_equal_type expected_type actual_type =
           (Error_unexpected_type_for_expression
              { expected = expected_type; actual = actual_type })
 
-let expect_all_types_equal types =
-  match types with
-  | [] -> failwith "Empty list not supported"
-  | first_t :: rest ->
-      many rest ~f:(expect_equal_type (Some first_t)) *> return first_t
-
 (* ----- Pass ----- *)
 
 (* --- Expressions --- *)
@@ -352,12 +346,16 @@ and check_match_case typemap expected_type scrutinee_t case =
   | _ -> not_implemented ()
 
 and check_match typemap expected_type scrutinee cases =
-  let* scrutinee_t = check_expr typemap None scrutinee in
-  let* case_types =
-    many cases ~f:(check_match_case typemap expected_type scrutinee_t)
-  in
-  let* result_t = expect_all_types_equal case_types in
-  check_match_exhaustiveness scrutinee_t cases *> return result_t
+  match cases with
+  | [] -> error Error_illegal_empty_matching
+  | first_case :: rest_cases ->
+      let* scrutinee_t = check_expr typemap None scrutinee in
+      let* case_t =
+        check_match_case typemap expected_type scrutinee_t first_case
+      in
+      many rest_cases ~f:(check_match_case typemap (Some case_t) scrutinee_t)
+      *> check_match_exhaustiveness scrutinee_t cases
+      *> return case_t
 
 and check_not_implemented_patterns cases =
   let check_each_case = function
@@ -383,9 +381,8 @@ and check_fix typemap expected_type expr =
 and check_nat_rec typemap expected_type n z s =
   check_expr typemap (Some TypeNat) n
   *> let* t = check_expr typemap expected_type z in
-  let expected_s_t = TypeFun([TypeNat], TypeFun([t], t)) in
-  check_expr typemap (Some expected_s_t) s
-  *> return t
+     let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
+     check_expr typemap (Some expected_s_t) s *> return t
 
 (* - Basic operators - *)
 
