@@ -391,6 +391,37 @@ and check_panic _ expected_type =
   | None -> error Error_ambiguous_panic_type
   | Some t -> return t
 
+(* - References - *)
+
+and check_ref typemap expected_type expr =
+  let* expr_t = check_expr typemap None expr in
+  match expected_type with
+  | None -> return (TypeRef expr_t)
+  | Some (TypeRef arg_t) ->
+      expect_equal_type (Some arg_t) expr_t *> return (TypeRef expr_t)
+  | Some t -> error (Error_unexpected_reference t)
+
+and check_deref typemap expected_type expr =
+  let* expr_t = check_expr typemap None expr in
+  match expr_t with
+  | TypeRef t -> expect_equal_type expected_type t
+  | t -> error (Error_not_a_reference t)
+
+and check_const_memory _ expected_type =
+  match expected_type with
+  | Some (TypeRef t) -> return (TypeRef t)
+  | Some t -> error (Error_unexpected_memory_address t)
+  | None -> error Error_ambiguous_reference_type
+
+and check_assign typemap expected_type l r =
+  expect_equal_type expected_type TypeUnit
+  *>
+  let* l_t = check_expr typemap None l in
+  (match l_t with
+  | TypeRef l_t -> check_expr typemap (Some l_t) r
+  | t -> error (Error_not_a_reference t))
+  *> return TypeUnit
+
 (* - Basic operators - *)
 
 and check_simple_unary_op typemap expected_type ~op_t ~return_t operand_expr =
@@ -498,6 +529,11 @@ and check_expr typemap expected_type expr =
   | NatRec (n, z, s) -> check_nat_rec typemap expected_type n z s
   (* Errors *)
   | Panic -> check_panic typemap expected_type
+  (* References *)
+  | Ref expr -> check_ref typemap expected_type expr
+  | Deref expr -> check_deref typemap expected_type expr
+  | ConstMemory _ -> check_const_memory typemap expected_type
+  | Assign (l, r) -> check_assign typemap expected_type l r
   | _ -> expr_not_implemented expr
 
 and check_exprs typemap (type_expr_pairs : (typeT * expr) list) : unit t =

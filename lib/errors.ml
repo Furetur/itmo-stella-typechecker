@@ -45,6 +45,11 @@ type error_kind =
   | Error_unexpected_pattern_for_type
   (* Errors *)
   | Error_ambiguous_panic_type
+  (* References *)
+  | Error_not_a_reference of typeT
+  | Error_unexpected_reference of typeT
+  | Error_ambiguous_reference_type
+  | Error_unexpected_memory_address of typeT
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -98,7 +103,7 @@ let show_kind = function
       sprintf
         "ERROR_UNEXPECTED_LIST: Expected a value of type %s but got a list"
         (pp_type expected)
-  | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST"
+  | Error_ambiguous_list -> "ERROR_AMBIGUOUS_LIST / ERROR_AMBIGUOUS_LIST_TYPE"
   | Error_not_a_list t ->
       sprintf "ERROR_NOT_A_LIST: Expected a list but got %s" (pp_type t)
   | Error_unexpected_injection { expected } ->
@@ -131,6 +136,15 @@ let show_kind = function
       "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: Fixpoint combinator expects \
        function of type fn(T) -> T"
   | Error_ambiguous_panic_type -> "ERROR_AMBIGUOUS_PANIC_TYPE"
+  | Error_not_a_reference t ->
+      sprintf "ERROR_NOT_A_REFERENCE: Expected a reference but got %s"
+        (pp_type t)
+  | Error_ambiguous_reference_type -> "ERROR_AMBIGUOUS_REFERENCE_TYPE"
+  | Error_unexpected_memory_address t ->
+      sprintf "Expected %s but got a memory address" (pp_type t)
+  | Error_unexpected_reference t ->
+      sprintf "ERROR_UNEXPECTED_REFERENCE: Expected %s but got a reference"
+        (pp_type t)
 
 let show { kind; stacktrace } =
   let trace =
