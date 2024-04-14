@@ -59,6 +59,12 @@ let expect_equal_type expected_type actual_type =
           (Error_unexpected_type_for_expression
              { expected = expected_type; actual = actual_type })
 
+let expect_all_types_equal types =
+  match types with
+  | [] -> failwith "Empty list not supported"
+  | first_t :: rest ->
+      many rest ~f:(expect_equal_type (Some first_t)) *> return first_t
+
 (* ----- Pass ----- *)
 
 (* --- Expressions --- *)
@@ -309,26 +315,49 @@ and check_inr typemap expected_type operator =
 
 (* - Pattern Matching - *)
 
-and check_match typemap expected_type scrutinee cases =
-  let check_single_branch pat_ident pat_t case_expr =
-    let new_typemap = Type_map.set_type typemap pat_ident pat_t in
-    check_expr new_typemap expected_type case_expr
-  in
-  check_not_implemented_patterns cases
-  *>
-  match extract_first_inl_and_inr cases with
-  | None, None -> error Error_illegal_empty_matching
-  | None, Some _ | Some _, None -> error Error_nonexhaustive_match_patterns
-  | ( Some (AMatchCase (PatternInl (PatternVar inl), inl_expr)),
-      Some (AMatchCase (PatternInr (PatternVar inr), inr_expr)) ) -> (
-      let* scrutinee_t = check_expr typemap None scrutinee in
+and check_match_not_implemented_patterns patterns =
+  if does_match_have_not_implemented_patterns patterns then not_implemented ()
+  else return ()
+
+and check_match_exhaustiveness scrutinee_t cases =
+  if List.length cases <> 0 then
+    let pats = List.map cases ~f:(fun (AMatchCase (pat, _)) -> pat) in
+    let is_exhaustive =
       match scrutinee_t with
-      | TypeSum (l_t, r_t) ->
-          let* inl_expr_t = check_single_branch inl l_t inl_expr in
-          let* inr_expr_t = check_single_branch inr r_t inr_expr in
-          expect_equal_type (Some inl_expr_t) inr_expr_t
+      | TypeSum _ -> is_sum_match_exhaustive pats
+      | _ -> is_other_match_exhaustive pats
+    in
+    if not is_exhaustive then error Error_nonexhaustive_match_patterns
+    else return ()
+  else error Error_illegal_empty_matching
+
+and check_match_branch typemap expected_type varname var_t expr =
+  let new_typemap = Type_map.set_type typemap varname var_t in
+  check_expr new_typemap expected_type expr
+
+and check_match_case typemap expected_type scrutinee_t case =
+  match case with
+  | AMatchCase (PatternInl (PatternVar varname), expr) -> (
+      match scrutinee_t with
+      | TypeSum (var_t, _) ->
+          check_match_branch typemap expected_type varname var_t expr
       | _ -> error Error_unexpected_pattern_for_type)
+  | AMatchCase (PatternInr (PatternVar varname), expr) -> (
+      match scrutinee_t with
+      | TypeSum (_, var_t) ->
+          check_match_branch typemap expected_type varname var_t expr
+      | _ -> error Error_unexpected_pattern_for_type)
+  | AMatchCase (PatternVar varname, expr) ->
+      check_match_branch typemap expected_type varname scrutinee_t expr
   | _ -> not_implemented ()
+
+and check_match typemap expected_type scrutinee cases =
+  let* scrutinee_t = check_expr typemap None scrutinee in
+  let* case_types =
+    many cases ~f:(check_match_case typemap expected_type scrutinee_t)
+  in
+  let* result_t = expect_all_types_equal case_types in
+  check_match_exhaustiveness scrutinee_t cases *> return result_t
 
 and check_not_implemented_patterns cases =
   let check_each_case = function
