@@ -45,6 +45,8 @@ type error_kind =
   | Error_unexpected_pattern_for_type
   (* Errors *)
   | Error_ambiguous_panic_type
+  | Error_ambiguous_throw_type
+  | Error_exception_type_not_declared
   (* References *)
   | Error_not_a_reference of typeT
   | Error_unexpected_reference of typeT
@@ -145,6 +147,8 @@ let show_kind = function
   | Error_unexpected_reference t ->
       sprintf "ERROR_UNEXPECTED_REFERENCE: Expected %s but got a reference"
         (pp_type t)
+  | Error_exception_type_not_declared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
+  | Error_ambiguous_throw_type -> "ERROR_AMBIGUOUS_THROW_TYPE"
 
 let show { kind; stacktrace } =
   let trace =

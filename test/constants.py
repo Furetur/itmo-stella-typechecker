@@ -29,5 +29,7 @@ REQUIRED_EXTENTIONS = {
     "#records",
     "#panic",
     "#sequencing",
-    "#references"
+    "#references",
+    "#exceptions",
+    "#exception-type-declaration"
 }
