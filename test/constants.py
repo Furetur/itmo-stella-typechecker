@@ -16,15 +16,15 @@ ERROR_NOT_IMPLEMENTED = "ERROR_NOT_IMPLEMENTED"
 ERROR_PARSE_ERROR = "PARSE_ERROR"
 
 REQUIRED_EXTENTIONS = {
-    "#panic",
     "#natural-literals",
     "#tuples",
     "#unit-type",
     "#pairs",
     "#let-bindings",
     "#nullary-functions",
+    "#multiparameter-functions"
     "#sum-types",
     "#lists",
     "#records"
-
+    "#panic",
 }
