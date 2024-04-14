@@ -426,12 +426,19 @@ and check_equality typemap expected_type left right =
   *> let* left_t = check_expr typemap None left in
      check_expr typemap (Some left_t) right *> return TypeBool
 
+(* - Sequencing - *)
+
+and check_sequence typemap expected_type expr1 expr2 =
+  check_expr typemap (Some TypeUnit) expr1
+  *> check_expr typemap expected_type expr2
+
 (* - Main visitor - *)
 
 and check_expr typemap expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type
   $
   match expr with
+  | Sequence (expr1, expr2) -> check_sequence typemap expected_type expr1 expr2
   | Application (callee, args) ->
       check_application typemap expected_type callee args
   | Abstraction (params, body) ->

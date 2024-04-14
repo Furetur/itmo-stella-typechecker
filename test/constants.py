@@ -28,4 +28,5 @@ REQUIRED_EXTENTIONS = {
     "#lists",
     "#records",
     "#panic",
+    "#sequencing"
 }
