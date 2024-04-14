@@ -2,6 +2,7 @@ open Base
 open Stella_parser.Parsetree
 open Stella_parser.Pretty_print_tree
 open Utils
+open Pattern_matching_utils
 open Errors
 
 let ( $ ) f x = f x
