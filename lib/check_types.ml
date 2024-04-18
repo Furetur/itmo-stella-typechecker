@@ -76,11 +76,13 @@ let with_param_bindings param_decls pass =
   with_updated_typemap pass @@ fun typemap ->
   Type_map.add_params typemap param_decls
 
+let are_types_compatible l r = Stdlib.( = ) l r
+
 let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
   | Some expected_type ->
-      if Stdlib.( = ) expected_type actual_type then return actual_type
+      if are_types_compatible expected_type actual_type then return actual_type
       else
         error
           (Error_unexpected_type_for_expression
@@ -125,7 +127,6 @@ and check_abstraction expected_type param_decls body_expr =
   in
   match expected_type with
   | Some (TypeFun (expected_param_types, expected_ret_t)) ->
-      Stdio.print_endline "from check_abstraction";
       check_params expected_param_types
       *> check_abstraction_body (Some expected_ret_t) param_decls body_expr
   | Some t -> error (Error_unexpected_lambda { expected = t })
@@ -396,8 +397,8 @@ and check_fix expected_type expr =
   | _ -> error Error_not_a_function
 
 and check_nat_rec expected_type n z s =
-  check_expr (Some TypeNat) n
-  *> let* t = check_expr expected_type z in
+  check_param (Some TypeNat) n
+  *> let* t = check_param expected_type z in
      let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
      check_expr (Some expected_s_t) s *> return t
 
@@ -501,6 +502,17 @@ and check_sequence expected_type expr1 expr2 =
   check_expr (Some TypeUnit) expr1 *> check_expr expected_type expr2
 
 (* - Main visitor - *)
+
+and check_param expected_type expr =
+  let* expr_t = check_expr None expr in
+  match expected_type with
+  | None -> return expr_t
+  | Some expected_type ->
+      if are_types_compatible expected_type expr_t then return expr_t
+      else
+        error
+          (Error_unexpected_type_for_parameter
+             { expected = expected_type; actual = expr_t })
 
 and check_expr expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type

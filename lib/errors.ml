@@ -143,7 +143,9 @@ let show_kind = function
         (pp_type t)
   | Error_ambiguous_reference_type -> "ERROR_AMBIGUOUS_REFERENCE_TYPE"
   | Error_unexpected_memory_address t ->
-      sprintf "Expected %s but got a memory address" (pp_type t)
+      sprintf
+        "ERROR_UNEXPECTED_MEMORY_ADDRESS: Expected %s but got a memory address"
+        (pp_type t)
   | Error_unexpected_reference t ->
       sprintf "ERROR_UNEXPECTED_REFERENCE: Expected %s but got a reference"
         (pp_type t)
