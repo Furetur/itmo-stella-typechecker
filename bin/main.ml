@@ -29,8 +29,11 @@ let typecheck_program prog =
       let msg = Stella_typechecker.Errors.show err in
       fatal msg
 
+let is_logging_enabled () =
+  match Sys.getenv "LOG" with Some "ON" -> true | _ -> false
+
 let main () =
-  setup_log (Some Logs.Debug);
+  if is_logging_enabled () then setup_log (Some Logs.Debug);
   let inpath = get_input_file_path () in
   let tree = parse_file inpath in
   typecheck_program tree
