@@ -97,8 +97,12 @@ module Structural_subtyping_model : Type_model = Make_type_model (struct
       match Map.find s_map t_field_name with
       | Some s_field_type -> is_subtype ~s:s_field_type ~t:t_field_type
       | None ->
-        Logs.debug(fun m -> m "Structural_subtyping_model.is_subtype_record: field %s is missing in S" t_field_name);
-        false
+          Logs.debug (fun m ->
+              m
+                "Structural_subtyping_model.is_subtype_record: field %s is \
+                 missing in S"
+                t_field_name);
+          false
     in
     let check_each_field ~key ~data = field_is_subtype key data in
     let result = Map.for_alli t_map ~f:check_each_field in
@@ -109,14 +113,10 @@ module Structural_subtyping_model : Type_model = Make_type_model (struct
 
   let is_subtype_tuple (is_subtype : subtype_checker) ~(s : typeT list)
       ~(t : typeT list) =
-    let convert_each_field index field_type =
-      let ident = StellaIdent (Int.to_string index) in
-      ARecordFieldType (ident, field_type)
-    in
-    let to_record_type = List.mapi ~f:convert_each_field in
-    let s_record = to_record_type s in
-    let t_record = to_record_type t in
-    is_subtype_record is_subtype ~s:s_record ~t:t_record
+    match List.zip s t with
+    | Ok type_pairs ->
+        List.for_all type_pairs ~f:(fun (s, t) -> is_subtype ~s ~t)
+    | _ -> false
 end)
 
 let choose_type_model exts : (module Type_model) =
