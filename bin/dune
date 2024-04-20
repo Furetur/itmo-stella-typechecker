@@ -1,6 +1,16 @@
 (executable
  (public_name stella_typechecker)
  (name main)
- (libraries base stdio stella_typechecker stella_parser)
+ (libraries
+  base
+  stdio
+  cmdliner
+  logs
+  logs.fmt
+  logs.cli
+  fmt
+  fmt.tty
+  stella_typechecker
+  stella_parser)
  (modules utils main)
  (modes exe byte))

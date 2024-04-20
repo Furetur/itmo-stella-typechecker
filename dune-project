@@ -21,7 +21,18 @@
  (name stella_typechecker)
  (synopsis "A short synopsis")
  (description "A longer description")
- (depends ocaml dune base-unix base stdio menhir cmdliner fpath ppx_deriving)
+ (depends
+  ocaml
+  dune
+  base-unix
+  base
+  stdio
+  menhir
+  cmdliner
+  fmt
+  logs
+  fpath
+  ppx_deriving)
  (tags
   (topics "to describe" your project)))
 

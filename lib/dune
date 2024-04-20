@@ -4,4 +4,4 @@
  (name stella_typechecker)
  (preprocess
   (pps ppx_deriving.std ppx_deriving.ord))
- (libraries base stdio fpath stella_parser))
+ (libraries base stdio fpath stella_parser logs fmt))

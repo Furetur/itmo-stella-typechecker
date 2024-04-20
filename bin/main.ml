@@ -30,6 +30,7 @@ let typecheck_program prog =
       fatal msg
 
 let main () =
+  setup_log (Some Logs.Debug);
   let inpath = get_input_file_path () in
   let tree = parse_file inpath in
   typecheck_program tree

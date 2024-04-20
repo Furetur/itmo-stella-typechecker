@@ -17,6 +17,8 @@ depends: [
   "stdio"
   "menhir"
   "cmdliner"
+  "fmt"
+  "logs"
   "fpath"
   "ppx_deriving"
   "odoc" {with-doc}

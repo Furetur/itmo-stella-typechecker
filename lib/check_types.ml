@@ -4,10 +4,12 @@ open Stella_parser.Pretty_print_tree
 open Utils
 open Pattern_matching_utils
 open Errors
+open Type_models
 
 (* --- Pass Setup --- *)
 
 type state = {
+  type_model : (module Type_model);
   stacktrace : string list;
   typemap : Type_map.t;
   exception_type : typeT option;
@@ -30,9 +32,8 @@ let in_error_context context f =
   set old_state *> return result
 
 let in_expr_error_context context expected_type f =
-  let type' =
-    match expected_type with Some t -> pp_type t | None -> "Unknown type"
-  in
+  let context = format_inline_code context in
+  let type' = pp_expected_type expected_type in
   let context = Printf.sprintf "%s <--- Expected: %s" context type' in
   in_error_context context f
 
@@ -76,13 +77,19 @@ let with_param_bindings param_decls pass =
   with_updated_typemap pass @@ fun typemap ->
   Type_map.add_params typemap param_decls
 
-let are_types_compatible l r = Stdlib.( = ) l r
+let is_subtype ~subtype ~supertype =
+  let* { type_model; _ } = get in
+  let module M = (val type_model) in
+  return (M.is_subtype ~s:subtype ~t:supertype)
 
 let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
   | Some expected_type ->
-      if are_types_compatible expected_type actual_type then return actual_type
+      let* are_types_compatible =
+        is_subtype ~subtype:actual_type ~supertype:expected_type
+      in
+      if are_types_compatible then return actual_type
       else
         error
           (Error_unexpected_type_for_expression
@@ -93,21 +100,31 @@ let expect_equal_type expected_type actual_type =
 (* --- Expressions --- *)
 
 let rec check_application expected_type callee args =
+  Logs.debug (fun m ->
+      m "check_application: expected=%s" (pp_expected_type expected_type));
   let check_arg_types expected_arg_types args =
     let* type_arg_pairs =
       zip_or_error Error_incorrect_number_of_arguments expected_arg_types args
     in
     check_exprs type_arg_pairs
   in
+  Logs.debug (fun m -> m "check_application: Entering callee");
   let* callee_type = check_expr None callee in
+  Logs.debug (fun m ->
+      m "check_application: callee_type=%s" (pp_type callee_type));
   match callee_type with
   | TypeFun (arg_types, ret_type) ->
       expect_equal_type expected_type ret_type
       *> check_arg_types arg_types args
       *> return ret_type
-  | _ -> error Error_not_a_function
+  | _ ->
+      Logs.debug (fun m -> m "check_application: Error_not_a_function");
+      error Error_not_a_function
 
 and check_abstraction expected_type param_decls body_expr =
+  Logs.debug (fun m ->
+      m "check_abstraction: enter, expected_type=%s"
+        (pp_expected_type expected_type));
   let expect_equal_param_types (expected, actual) =
     if Stdlib.( = ) expected actual then return ()
     else error (Error_unexpected_type_for_parameter { expected; actual })
@@ -126,9 +143,10 @@ and check_abstraction expected_type param_decls body_expr =
     many_unit type_pairs ~f:expect_equal_param_types
   in
   match expected_type with
-  | Some (TypeFun (expected_param_types, expected_ret_t)) ->
+  | Some (TypeFun (expected_param_types, expected_ret_t) as result_t) ->
       check_params expected_param_types
       *> check_abstraction_body (Some expected_ret_t) param_decls body_expr
+      *> return result_t
   | Some t -> error (Error_unexpected_lambda { expected = t })
   | None -> check_unknown_abstraction param_decls body_expr
 
@@ -143,15 +161,23 @@ and check_abstraction_body expected_type param_decls body_expr =
   with_param_bindings param_decls (check_expr expected_type body_expr)
 
 and check_if expected_type cond then_expr else_expr =
+  Logs.debug (fun m -> m "check_if: Enter");
   check_expr (Some TypeBool) cond
   *>
   match expected_type with
   | Some expected_type ->
+      Logs.debug (fun m ->
+          m "check_if: known expected_type=%s" (pp_type expected_type));
       check_expr (Some expected_type) then_expr
       *> check_expr (Some expected_type) else_expr
       *> return expected_type
   | None ->
+      Logs.debug (fun m ->
+          m "check_if: expected type unknown, checking 'then' branch");
       let* then_type = check_expr None then_expr in
+      Logs.debug (fun m ->
+          m "check_if: unknown expected type, but then_type=%s"
+            (pp_type then_type));
       check_expr (Some then_type) else_expr
 
 and check_each_let_binding = function
@@ -508,7 +534,8 @@ and check_param expected_type expr =
   match expected_type with
   | None -> return expr_t
   | Some expected_type ->
-      if are_types_compatible expected_type expr_t then return expr_t
+      let* are_comp = is_subtype ~supertype:expected_type ~subtype:expr_t in
+      if are_comp then return expr_t
       else
         error
           (Error_unexpected_type_for_parameter
@@ -637,6 +664,13 @@ let make_globals_type_map (AProgram (_, _, decls)) =
 let check_program (AProgram (_, _, decls) as prog) : unit pass_result =
   let global_type_map = make_globals_type_map prog in
   let exception_type = collect_exception_type prog in
-  let init = { stacktrace = []; typemap = global_type_map; exception_type } in
+  let init =
+    {
+      stacktrace = [];
+      typemap = global_type_map;
+      exception_type;
+      type_model = (module Syntax_equality_type_model);
+    }
+  in
   let pass = many_unit decls ~f:check_decl in
   run_pass ~init pass

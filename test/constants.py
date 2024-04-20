@@ -31,5 +31,6 @@ REQUIRED_EXTENTIONS = {
     "#sequencing",
     "#references",
     "#exceptions",
-    "#exception-type-declaration"
+    "#exception-type-declaration",
+    # "#ambiguous-type-as-bottom"
 }
