@@ -1,10 +1,9 @@
 open Base
 open Stella_parser.Parsetree
+open Utils
 
 type subtype_checker = s:typeT -> t:typeT -> bool
 (* Checks that S is subtype of T *)
-
-type type_model = { is_subtype : subtype_checker }
 
 module type Type_model = sig
   val is_subtype : subtype_checker
@@ -26,6 +25,8 @@ module type Type_model_core = sig
 end
 
 module Make_type_model (Core : Type_model_core) : Type_model = struct
+  include Core
+
   let rec is_subtype_fun ~s_params ~s_ret ~t_params ~t_ret =
     (* Params are covariant *)
     let check_each_param (s_param, t_param) =
@@ -46,6 +47,7 @@ module Make_type_model (Core : Type_model_core) : Type_model = struct
     is_subtype ~s:s_el ~t:t_el && is_subtype ~s:t_el ~t:s_el
 
   and is_subtype ~s ~t =
+    Logs.debug (fun m -> m "is_subtype: s=%s t=%s" (pp_type s) (pp_type t));
     match (s, t) with
     | TypeFun (s_params, s_ret), TypeFun (t_params, t_ret) ->
         is_subtype_fun ~s_params ~s_ret ~t_params ~t_ret
@@ -78,33 +80,32 @@ Make_type_model (struct
   let is_subtype_bottom _ _ = true
 end)
 
-let f (is_subtype : subtype_checker) ~(s : recordFieldType list)
-    ~(t : recordFieldType list) =
-  let s_map = Type_map.of_record_fields s in
-  let t_map = Type_map.of_record_fields t in
-  let field_is_subtype s_field_name s_field_type =
-    match Map.find t_map s_field_name with
-    | Some t_field_type -> is_subtype ~s:s_field_type ~t:t_field_type
-    | None -> false
-  in
-  let check_each_field ~key ~data = field_is_subtype key data in
-  Map.for_alli s_map ~f:check_each_field
-
 module Structural_subtyping_model : Type_model = Make_type_model (struct
   let is_subtype_top _ _ = true
   let is_subtype_bottom _ _ = true
 
   let is_subtype_record (is_subtype : subtype_checker)
       ~(s : recordFieldType list) ~(t : recordFieldType list) =
+    let s_type = TypeRecord s in
+    let t_type = TypeRecord t in
+    Logs.debug (fun m ->
+        m "Structural_subtyping_model.is_subtype_record: enter s=%s t=%s"
+          (pp_type s_type) (pp_type t_type));
     let s_map = Type_map.of_record_fields s in
     let t_map = Type_map.of_record_fields t in
-    let field_is_subtype s_field_name s_field_type =
-      match Map.find t_map s_field_name with
-      | Some t_field_type -> is_subtype ~s:s_field_type ~t:t_field_type
-      | None -> false
+    let field_is_subtype t_field_name t_field_type =
+      match Map.find s_map t_field_name with
+      | Some s_field_type -> is_subtype ~s:s_field_type ~t:t_field_type
+      | None ->
+        Logs.debug(fun m -> m "Structural_subtyping_model.is_subtype_record: field %s is missing in S" t_field_name);
+        false
     in
     let check_each_field ~key ~data = field_is_subtype key data in
-    Map.for_alli s_map ~f:check_each_field
+    let result = Map.for_alli t_map ~f:check_each_field in
+    Logs.debug (fun m ->
+        m "Is %s a subtype of %s ==> %b" (pp_type s_type) (pp_type t_type)
+          result);
+    result
 
   let is_subtype_tuple (is_subtype : subtype_checker) ~(s : typeT list)
       ~(t : typeT list) =
@@ -117,3 +118,16 @@ module Structural_subtyping_model : Type_model = Make_type_model (struct
     let t_record = to_record_type t in
     is_subtype_record is_subtype ~s:s_record ~t:t_record
 end)
+
+let choose_type_model exts : (module Type_model) =
+  let open Extentions in
+  if is_structural_subtyping_enabled exts then (
+    Logs.debug (fun m -> m "Type model: Structural_subtyping_model");
+    (module Structural_subtyping_model))
+  else if is_bottom_disambiguation_enabled exts then (
+    Logs.debug (fun m ->
+        m "Type model: Syntax_equality_with_top_bottom_type_model");
+    (module Syntax_equality_with_top_bottom_type_model))
+  else (
+    Logs.debug (fun m -> m "Type model: Syntax_equality_type_model");
+    (module Syntax_equality_type_model))

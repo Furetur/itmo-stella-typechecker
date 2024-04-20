@@ -7,6 +7,7 @@ type error_kind =
   | Error_missing_main
   | Error_undefined_variable of stellaIdent
   | Error_unexpected_type_for_expression of { expected : typeT; actual : typeT }
+  | Error_unexpected_subtype of { expected : typeT; actual : typeT }
   | Error_incorrect_number_of_arguments
   | Error_not_a_function
   | Error_unexpected_lambda of { expected : typeT }
@@ -65,6 +66,9 @@ let show_kind = function
   | Error_unexpected_type_for_expression { expected; actual } ->
       sprintf "ERROR_UNEXPECTED_TYPE_FOR_EXPRESSION: Expected '%s' but got '%s'"
         (pp_type expected) (pp_type actual)
+  | Error_unexpected_subtype { expected; actual } ->
+      sprintf "ERROR_UNEXPECTED_SUBTYPE: '%s' is not a subtype of '%s'"
+        (pp_type actual) (pp_type expected)
   | Error_not_a_function -> "ERROR_NOT_A_FUNCTION"
   | Error_incorrect_number_of_arguments -> "ERROR_INCORRECT_NUMBER_OF_ARGUMENTS"
   | Error_not_a_tuple t ->

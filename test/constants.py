@@ -32,5 +32,8 @@ REQUIRED_EXTENTIONS = {
     "#references",
     "#exceptions",
     "#exception-type-declaration",
-    # "#ambiguous-type-as-bottom"
+    "#structural-subtyping",
+    "#ambiguous-type-as-bottom",
+    "#top-type",
+    "#bottom-type"
 }
