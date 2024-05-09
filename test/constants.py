@@ -23,14 +23,10 @@ REQUIRED_EXTENTIONS = {
     "#let-bindings",
     "#nullary-functions",
     "#multiparameter-functions",
+    "#type-ascriptions",
     "#fixpoint-combinator",
     "#sum-types",
     "#lists",
     "#records",
-    "#panic",
     "#sequencing",
-    "#references",
-    "#exceptions",
-    "#exception-type-declaration",
-    # "#ambiguous-type-as-bottom"
 }
