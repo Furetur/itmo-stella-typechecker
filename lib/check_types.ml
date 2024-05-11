@@ -4,16 +4,11 @@ open Stella_parser.Pretty_print_tree
 open Utils
 open Pattern_matching_utils
 open Errors
-open Type_models
+
 
 (* --- Pass Setup --- *)
 
-type state = {
-  type_model : (module Type_model);
-  stacktrace : string list;
-  typemap : Type_map.t;
-  exception_type : typeT option;
-}
+type state = { stacktrace : string list; typemap : Type_map.t }
 
 module ThisPass = Passes.SingleError (struct
   type pass_state = state
@@ -77,19 +72,11 @@ let with_param_bindings param_decls pass =
   with_updated_typemap pass @@ fun typemap ->
   Type_map.add_params typemap param_decls
 
-let is_subtype ~subtype ~supertype =
-  let* { type_model; _ } = get in
-  let module M = (val type_model) in
-  return (M.is_subtype ~s:subtype ~t:supertype)
-
 let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
   | Some expected_type ->
-      let* are_types_compatible =
-        is_subtype ~subtype:actual_type ~supertype:expected_type
-      in
-      if are_types_compatible then return actual_type
+      if Stdlib.(expected_type = actual_type) then return actual_type
       else
         error
           (Error_unexpected_type_for_expression
@@ -428,35 +415,6 @@ and check_nat_rec expected_type n z s =
      let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
      check_expr (Some expected_s_t) s *> return t
 
-(* - Errors - *)
-
-and check_panic expected_type =
-  match expected_type with
-  | None -> error Error_ambiguous_panic_type
-  | Some t -> return t
-
-and check_throw expected_type expr =
-  let* { exception_type; _ } = get in
-  match exception_type with
-  | None -> error Error_exception_type_not_declared
-  | Some exn_t -> (
-      match expected_type with
-      | None -> error Error_ambiguous_throw_type
-      | Some result_t -> check_expr (Some exn_t) expr *> return result_t)
-
-and check_try_with expected_type try_expr with_expr =
-  let* expr_t = check_expr expected_type try_expr in
-  check_expr (Some expr_t) with_expr
-
-and check_try_catch expected_type try_expr pat catch_expr =
-  let* { exception_type; _ } = get in
-  match exception_type with
-  | None -> error Error_exception_type_not_declared
-  | Some exn_t ->
-      let* expr_t = check_expr expected_type try_expr in
-      let case = AMatchCase (pat, catch_expr) in
-      check_match_case (Some expr_t) exn_t case
-
 (* - References - *)
 
 and check_ref expected_type expr =
@@ -534,8 +492,7 @@ and check_param expected_type expr =
   match expected_type with
   | None -> return expr_t
   | Some expected_type ->
-      let* are_comp = is_subtype ~supertype:expected_type ~subtype:expr_t in
-      if are_comp then return expr_t
+      if Stdlib.(expected_type = expr_t) then return expr_t
       else
         error
           (Error_unexpected_type_for_parameter
@@ -597,13 +554,6 @@ and check_expr expected_type expr =
   (* Recursion *)
   | Fix expr -> check_fix expected_type expr
   | NatRec (n, z, s) -> check_nat_rec expected_type n z s
-  (* Errors *)
-  | Panic -> check_panic expected_type
-  | Throw e -> check_throw expected_type e
-  | TryWith (try_expr, with_expr) ->
-      check_try_with expected_type try_expr with_expr
-  | TryCatch (try_expr, pat, catch_expr) ->
-      check_try_catch expected_type try_expr pat catch_expr
   (* References *)
   | Ref expr -> check_ref expected_type expr
   | Deref expr -> check_deref expected_type expr
@@ -663,14 +613,6 @@ let make_globals_type_map (AProgram (_, _, decls)) =
 
 let check_program (AProgram (_, _, decls) as prog) : unit pass_result =
   let global_type_map = make_globals_type_map prog in
-  let exception_type = collect_exception_type prog in
-  let init =
-    {
-      stacktrace = [];
-      typemap = global_type_map;
-      exception_type;
-      type_model = (module Syntax_equality_type_model);
-    }
-  in
+  let init = { stacktrace = []; typemap = global_type_map } in
   let pass = many_unit decls ~f:check_decl in
   run_pass ~init pass
