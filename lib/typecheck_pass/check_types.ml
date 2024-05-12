@@ -5,7 +5,6 @@ open Utils
 open Pattern_matching_utils
 open Errors
 
-
 (* --- Pass Setup --- *)
 
 type state = { stacktrace : string list; typemap : Type_map.t }

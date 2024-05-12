@@ -152,11 +152,12 @@ let show_kind = function
   | Error_exception_type_not_declared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
   | Error_ambiguous_throw_type -> "ERROR_AMBIGUOUS_THROW_TYPE"
 
+let show_stacktrace stacktrace =
+  stacktrace
+  |> List.map ~f:format_inline_code
+  |> List.mapi ~f:(fun i frame -> Printf.sprintf "%d. %s" (i + 1) frame)
+  |> String.concat_lines
+
 let show { kind; stacktrace } =
-  let trace =
-    stacktrace
-    |> List.map ~f:format_inline_code
-    |> List.mapi ~f:(fun i frame -> Printf.sprintf "%d. %s" (i + 1) frame)
-    |> String.concat_lines
-  in
+  let trace = show_stacktrace stacktrace in
   sprintf "%s\n\n=== Stacktrace ===\n%s" (show_kind kind) trace

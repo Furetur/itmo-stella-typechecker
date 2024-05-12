@@ -22,8 +22,10 @@ let rec check_application expected_type callee args =
   let* callee_type = check_expr None callee in
   Logs.debug (fun m ->
       m "check_application: callee_type=%s" (pp_type callee_type));
+  let n_args = List.length args in
   let* arg_types, ret_type =
-    expect_a_function callee_type (fun _ -> Error_not_a_function)
+    expect_a_function callee_type n_args Error_not_a_function
+      Error_incorrect_number_of_arguments
   in
   expect_equal_type expected_type ret_type
   *> check_arg_types arg_types args
@@ -53,9 +55,14 @@ and check_abstraction expected_type param_decls body_expr =
   in
   match expected_type with
   | Some expected ->
+      let n_args = List.length param_decls in
+      let not_a_func_err = Error_unexpected_lambda { expected } in
+      let invalid_number_of_args_err =
+        Error_unexpected_number_of_parameters_in_lambda { expected = n_args }
+      in
       let* expected_param_types, expected_ret_t =
-        expect_a_function expected (fun _ ->
-            Error_unexpected_lambda { expected })
+        expect_a_function expected n_args not_a_func_err
+          invalid_number_of_args_err
       in
       check_params expected_param_types
       *> check_abstraction_body (Some expected_ret_t) param_decls body_expr
@@ -70,7 +77,7 @@ and check_unknown_abstraction param_decls body_expr =
   return (TypeFun (actual_param_types, ret_t))
 
 and check_abstraction_body expected_type param_decls body_expr =
-  with_param_bindings param_decls (check_expr expected_type body_expr)
+  with_param_bindings param_decls (fun _ -> check_expr expected_type body_expr)
 
 and check_if expected_type cond then_expr else_expr =
   Logs.debug (fun m -> m "check_if: Enter");
@@ -100,7 +107,8 @@ and check_each_let_binding = function
 
 and check_let expected_type pattern_bindings body_expr =
   let* ident_type_pairs = pattern_bindings |> many ~f:check_each_let_binding in
-  with_new_bindings ident_type_pairs (check_expr expected_type body_expr)
+  with_new_bindings ident_type_pairs (fun _ ->
+      check_expr expected_type body_expr)
 
 (* - Tuple - *)
 
@@ -275,7 +283,7 @@ and check_match_exhaustiveness scrutinee_t cases =
   else error Error_illegal_empty_matching
 
 and check_match_branch expected_type varname var_t expr =
-  with_new_binding varname var_t (check_expr expected_type expr)
+  with_new_binding varname var_t (fun _ -> check_expr expected_type expr)
 
 and check_match_case expected_type scrutinee_t case =
   match case with
@@ -314,7 +322,10 @@ and check_not_implemented_patterns cases =
 
 and check_fix expected_type expr =
   let* expr_t = check_expr None expr in
-  let* _, ret_t = expect_a_function expr_t (fun _ -> Error_not_a_function) in
+  let* _, ret_t =
+    expect_a_function expr_t 1 Error_not_a_function
+      Error_incorrect_number_of_arguments
+  in
   let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
   check_expr (Some needed_fun_t) expr
   *>
@@ -381,8 +392,7 @@ and check_param expected_type expr =
              { expected = expected_type; actual = expr_t })
 
 and check_expr expected_type expr =
-  in_expr_error_context (printTree prtExpr expr) expected_type
-  @@
+  in_expr_error_context (printTree prtExpr expr) expected_type @@ fun _ ->
   match expr with
   | Sequence (expr1, expr2) -> check_sequence expected_type expr1 expr2
   | Application (callee, args) -> check_application expected_type callee args
@@ -455,15 +465,13 @@ and check_fun_decl params ret_type body_decls return_expr : unit t =
   match body_decls with
   | _ :: _ -> not_implemented ()
   | [] ->
-      in_return_error_context
-      @@
+      in_return_error_context @@ fun _ ->
       let ret_type = Some (type_of_returnType ret_type) in
-      with_param_bindings params
-      @@ (check_expr ret_type return_expr *> return ())
+      with_param_bindings params @@ fun _ ->
+      check_expr ret_type return_expr *> return ()
 
 and check_decl decl : unit t =
-  in_error_context (printTree prtDecl decl)
-  @@
+  in_error_context (printTree prtDecl decl) @@ fun _ ->
   match decl with
   | DeclFun (_, _, params, ret_type, _, body_decls, return_expr) ->
       check_fun_decl params ret_type body_decls return_expr
@@ -488,8 +496,17 @@ let make_globals_type_map (AProgram (_, _, decls)) =
   in
   Type_map.of_globals pairs
 
-let check_program (AProgram (_, _, decls) as prog) : unit pass_result =
+let check_prog (AProgram (_, _, decls)) =
+  many_unit decls ~f:check_decl *> solve_constraints
+
+let check_program prog : unit pass_result =
   let global_type_map = make_globals_type_map prog in
-  let init = { stacktrace = []; typemap = global_type_map } in
-  let pass = many_unit decls ~f:check_decl in
-  run_pass ~init pass
+  let init =
+    {
+      stacktrace = [];
+      typemap = global_type_map;
+      next_typevar_id = 0;
+      constraints = [];
+    }
+  in
+  run_pass ~init (check_prog prog)

@@ -12,15 +12,13 @@ open ThisPass
 
 (* ----- Helpers ----- *)
 
-let typevar_prefix = "__auto__"
+let typevar_prefix = "__auto"
 
 let get_next_typevar =
   let* id = get in
   set (id + 1)
   *>
-  let name = typevar_prefix ^ Int.to_string id in
-  let name = StellaIdent name in
-  let typevar = TypeVar name in
+  let typevar = Utils.make_typevar typevar_prefix id in
   return typevar
 
 (* ----- Pass ----- *)
@@ -121,8 +119,8 @@ and pass_expr = function
   | DotRecord (expr, field_ident) ->
       pass_unary expr (fun e -> DotRecord (e, field_ident))
   | Record bindings ->
-    let* bindings = many bindings ~f:pass_binding in
-    return @@ Record bindings
+      let* bindings = many bindings ~f:pass_binding in
+      return @@ Record bindings
   (* Lists *)
   | List elements ->
       let* elements = pass_exprs elements in
@@ -169,13 +167,17 @@ let rec pass_decls = many ~f:pass_decl
 
 and pass_decl = function
   | DeclFun (annots, name, params, ret, throw, decls, body) ->
-    let* params = pass_param_decls params in
-    let* ret = match ret with
-    | NoReturnType -> return NoReturnType
-    | SomeReturnType t -> let* t = pass_type t in return @@ SomeReturnType t in
-    let* decls = pass_decls decls in
-    let* body = pass_expr body in
-    return @@ DeclFun (annots, name, params, ret, throw, decls, body)
+      let* params = pass_param_decls params in
+      let* ret =
+        match ret with
+        | NoReturnType -> return NoReturnType
+        | SomeReturnType t ->
+            let* t = pass_type t in
+            return @@ SomeReturnType t
+      in
+      let* decls = pass_decls decls in
+      let* body = pass_expr body in
+      return @@ DeclFun (annots, name, params, ret, throw, decls, body)
   | _ -> Utils.not_implemented ()
 
 let pass_program (AProgram (l, exts, decls)) =
@@ -185,7 +187,4 @@ let pass_program (AProgram (l, exts, decls)) =
 let replace_auto prog =
   let pass = pass_program prog in
   let result = run_pass pass ~init:0 in
-  match result with
-  | Ok prog -> prog
-  | _ -> Utils.internal_error ()
-
+  match result with Ok prog -> prog | _ -> Utils.internal_error ()

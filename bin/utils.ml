@@ -16,7 +16,6 @@ let print_parse_error { start_pos; end_pos } =
     end_pos.pos_lnum
     (end_pos.pos_cnum - end_pos.pos_bol + 1)
 
-
 let setup_log level =
   Fmt_tty.setup_std_outputs ~style_renderer:`Ansi_tty ();
   Logs.set_level level;
