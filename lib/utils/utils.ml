@@ -10,6 +10,8 @@ let expr_not_implemented expr =
     (show (showExpr expr))
     ()
 
+let internal_error () = failwith "INTERNAL ERROR"
+
 let type_of_returnType = function
   | NoReturnType -> TypeUnit
   | SomeReturnType t -> t
