@@ -68,11 +68,15 @@ and unify_solve acc expected actual stacktrace equations =
 
   let solve_immediate_equality var expr equations =
     let (StellaIdent varname) = var in
-    Logs.debug (fun m -> m "This is an immediate equality equation: %s = %s" varname (pp_type expr));
+    Logs.debug (fun m ->
+        m "This is an immediate equality equation: %s = %s" varname
+          (pp_type expr));
     if not (has_typevar var expr) then
       apply_solution_for_1_var var expr equations
     else
-      let () = Logs.debug (fun m -> m "unify: %s is an infinite type!" (varname)) in
+      let () =
+        Logs.debug (fun m -> m "unify: %s is an infinite type!" varname)
+      in
       let err_kind =
         Error_occurs_check_infinite_type
           { type' = TypeVar var; type_value = expr }

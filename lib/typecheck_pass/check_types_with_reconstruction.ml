@@ -35,39 +35,8 @@ and check_abstraction expected_type param_decls body_expr =
   Logs.debug (fun m ->
       m "check_abstraction: enter, expected_type=%s"
         (pp_expected_type expected_type));
-  let expect_equal_param_types (expected, actual) =
-    let* ok = check_equal_types expected actual in
-    if ok then return ()
-    else error (Error_unexpected_type_for_parameter { expected; actual })
-  in
-  let check_params expected_param_types =
-    let actual_param_types =
-      List.map param_decls ~f:(fun (AParamDecl (_, t)) -> t)
-    in
-    let expected_n_params = List.length expected_param_types in
-    let* type_pairs =
-      zip_or_error
-        (Error_unexpected_number_of_parameters_in_lambda
-           { expected = expected_n_params })
-        expected_param_types actual_param_types
-    in
-    many_unit type_pairs ~f:expect_equal_param_types
-  in
-  match expected_type with
-  | Some expected ->
-      let n_args = List.length param_decls in
-      let not_a_func_err = Error_unexpected_lambda { expected } in
-      let invalid_number_of_args_err =
-        Error_unexpected_number_of_parameters_in_lambda { expected = n_args }
-      in
-      let* expected_param_types, expected_ret_t =
-        expect_a_function expected n_args not_a_func_err
-          invalid_number_of_args_err
-      in
-      check_params expected_param_types
-      *> check_abstraction_body (Some expected_ret_t) param_decls body_expr
-      *> return (TypeFun (expected_param_types, expected_ret_t))
-  | None -> check_unknown_abstraction param_decls body_expr
+  let* actual_t = check_unknown_abstraction param_decls body_expr in
+  expect_equal_type expected_type actual_t
 
 and check_unknown_abstraction param_decls body_expr =
   let actual_param_types =
@@ -193,14 +162,11 @@ and check_list expected_type elements =
   let check_each_element expected_element_type el_expr =
     check_expr expected_element_type el_expr *> return ()
   in
-  match expected_type with
-  | Some expected_type ->
-      let err = Error_unexpected_list { expected = expected_type } in
-
-      let* element_type = expect_a_list expected_type err in
-      many_unit elements ~f:(check_each_element (Some element_type))
-      *> return (TypeList element_type)
-  | None -> check_unknown_list elements
+  let* el_t = new_typevar in
+  many_unit elements ~f:(check_each_element (Some el_t))
+  *>
+  let actual_list_t = TypeList el_t in
+  expect_equal_type expected_type actual_list_t
 
 and check_unknown_list elements =
   match elements with
@@ -212,16 +178,9 @@ and check_unknown_list elements =
       check_list (Some (TypeList first_el_type)) elements
 
 and check_cons_list expected_type head tail =
-  match expected_type with
-  | Some expected_type ->
-      let err = Error_unexpected_list { expected = expected_type } in
-      let* element_type = expect_a_list expected_type err in
-      let list_type = TypeList element_type in
-      check_expr (Some element_type) head *> check_expr (Some list_type) tail
-  | None ->
-      let* head_t = check_expr None head in
-      let list_t = TypeList head_t in
-      check_expr (Some list_t) tail
+  let* el_t = check_expr None head in
+  let list_t = TypeList el_t in
+  expect_equal_type expected_type list_t *> check_expr (Some list_t) tail
 
 and check_head expected_type expr =
   match expected_type with
@@ -248,24 +207,19 @@ and check_is_empty expected_type expr =
 
 (* - Sum types - *)
 
-and check_injection expected_type operator_type operator =
+and check_injection expected_type create_sum_t operator =
   let* typevar = new_typevar in
-  let expected_type =
-    Option.value_or_thunk expected_type ~default:(fun _ -> typevar)
-  in
-  let err = Error_unexpected_injection { expected = expected_type } in
-  let* l_t, r_t = expect_a_sum expected_type err in
-  let sum_t = TypeSum (l_t, r_t) in
-  let op_t = operator_type l_t r_t in
-  check_expr (Some op_t) operator *> return sum_t
+  let* operator_t = check_expr None operator in
+  let actual_sum_t = create_sum_t operator_t typevar in
+  expect_equal_type expected_type actual_sum_t
 
 and check_inl expected_type operator =
-  let select_left_type l_t _ = l_t in
-  check_injection expected_type select_left_type operator
+  let make_sum_of_inl l_t r_t = TypeSum (l_t, r_t) in
+  check_injection expected_type make_sum_of_inl operator
 
 and check_inr expected_type operator =
-  let select_right_type _ r_t = r_t in
-  check_injection expected_type select_right_type operator
+  let make_sum_of_inr r_t l_t = TypeSum (l_t, r_t) in
+  check_injection expected_type make_sum_of_inr operator
 
 (* - Pattern Matching - *)
 
@@ -273,14 +227,10 @@ and check_match_not_implemented_patterns patterns =
   if does_match_have_not_implemented_patterns patterns then not_implemented ()
   else return ()
 
-and check_match_exhaustiveness scrutinee_t cases =
+and check_match_exhaustiveness cases =
   if List.length cases <> 0 then
     let pats = List.map cases ~f:(fun (AMatchCase (pat, _)) -> pat) in
-    let is_exhaustive =
-      match scrutinee_t with
-      | TypeSum _ -> is_sum_match_exhaustive pats
-      | _ -> is_other_match_exhaustive pats
-    in
+    let is_exhaustive = is_match_exhaustive pats in
     if not is_exhaustive then error Error_nonexhaustive_match_patterns
     else return ()
   else error Error_illegal_empty_matching
@@ -311,7 +261,7 @@ and check_match expected_type scrutinee cases =
       let* scrutinee_t = check_expr None scrutinee in
       let* case_t = check_match_case expected_type scrutinee_t first_case in
       many rest_cases ~f:(check_match_case (Some case_t) scrutinee_t)
-      *> check_match_exhaustiveness scrutinee_t cases
+      *> check_match_exhaustiveness cases
       *> return case_t
 
 and check_not_implemented_patterns cases =
@@ -324,20 +274,15 @@ and check_not_implemented_patterns cases =
 (* - Recursion - *)
 
 and check_fix expected_type expr =
-  let* expr_t = check_expr None expr in
-  let* _, ret_t =
-    expect_a_function expr_t 1 Error_not_a_function
-      Error_incorrect_number_of_arguments
-  in
-  let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
-  check_expr (Some needed_fun_t) expr
+  let* result_t = new_typevar in
+  expect_equal_type expected_type result_t
   *>
-  let result_type = ret_t in
-  expect_equal_type expected_type result_type *> return result_type
+  let expected_func_t = TypeFun ([ result_t ], result_t) in
+  check_expr (Some expected_func_t) expr
 
 and check_nat_rec expected_type n z s =
-  check_param (Some TypeNat) n
-  *> let* t = check_param expected_type z in
+  check_expr (Some TypeNat) n
+  *> let* t = check_expr expected_type z in
      let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
      check_expr (Some expected_s_t) s *> return t
 
@@ -381,18 +326,6 @@ and check_sequence expected_type expr1 expr2 =
   check_expr (Some TypeUnit) expr1 *> check_expr expected_type expr2
 
 (* - Main visitor - *)
-
-and check_param expected_type expr =
-  let* expr_t = check_expr None expr in
-  match expected_type with
-  | None -> return expr_t
-  | Some expected_type ->
-      let* ok = check_equal_types expected_type expr_t in
-      if ok then return expr_t
-      else
-        error
-          (Error_unexpected_type_for_parameter
-             { expected = expected_type; actual = expr_t })
 
 and check_expr expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type @@ fun _ ->
