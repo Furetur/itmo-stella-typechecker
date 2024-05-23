@@ -52,6 +52,8 @@ type error_kind =
   | Error_unexpected_reference of typeT
   | Error_ambiguous_reference_type
   | Error_unexpected_memory_address of typeT
+  (* Type reconstruction *)
+  | Error_occurs_check_infinite_type of { type' : typeT; type_value : typeT }
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -151,6 +153,9 @@ let show_kind = function
         (pp_type t)
   | Error_exception_type_not_declared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
   | Error_ambiguous_throw_type -> "ERROR_AMBIGUOUS_THROW_TYPE"
+  | Error_occurs_check_infinite_type { type'; type_value } ->
+      Printf.sprintf "ERROR_OCCURS_CHECK_INFINITE_TYPE: %s = %s" (pp_type type')
+        (pp_type type_value)
 
 let show_stacktrace stacktrace =
   stacktrace

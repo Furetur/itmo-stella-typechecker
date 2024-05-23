@@ -3,21 +3,13 @@ open Stella_parser.Parsetree
 open Utils
 open Errors
 open Has_type_vars
-
-type constraint' = {
-  expected : typeT;
-  actual : typeT;
-  stacktrace : string list;
-}
-
-let show_constraint { expected; actual; _ } =
-  Printf.sprintf "%s = %s" (pp_type expected) (pp_type actual)
+open Unify
 
 type state = {
   stacktrace : string list;
   typemap : Type_map.t;
   next_typevar_id : int;
-  constraints : constraint' list;
+  constraints : type_equation list;
 }
 
 module ThisPass = Passes.SingleError (struct
@@ -106,13 +98,9 @@ let add_constraint expected actual =
   let c = { expected; actual; stacktrace } in
   let c_index = List.length s.constraints in
   Logs.debug (fun m ->
-      m "add_constraint: %d: %s, from:\n%s" c_index (show_constraint c)
+      m "add_constraint: %d: %s, from:\n%s" c_index (show_equation c)
         (Errors.show_stacktrace stacktrace));
-  set { s with constraints = c :: s.constraints }
-  *> let* s = get in
-     Logs.debug (fun m ->
-         m "Now there are %d constraints!" (List.length s.constraints));
-     return ()
+  set { s with constraints = c :: s.constraints } *> return ()
 
 let add_function_constraint t n_args =
   let* args_t = new_typevars n_args in
@@ -142,7 +130,8 @@ let check_equal_types expected_type actual_type =
   let have_type_vars =
     check_has_typevars expected_type || check_has_typevars actual_type
   in
-  if not have_type_vars then return Stdlib.(expected_type = actual_type)
+  if not have_type_vars then
+    return (syntactically_equal expected_type actual_type)
   else add_constraint expected_type actual_type *> return true
 
 let expect_equal_type expected_type actual_type =
@@ -232,15 +221,10 @@ let expect_a_sum t err =
 
 (* --- Solve --- *)
 
-let print_constraints_system cs =
-  let print_constraint index c =
-    Logs.debug (fun m -> m "%d: %s" index (show_constraint c))
-  in
-  List.iteri cs ~f:print_constraint;
-  ()
-
 let solve_constraints =
   let* s = get in
-  Logs.debug (fun m -> m "SOLVING %d CONSTRAINTS" (List.length s.constraints));
-  print_constraints_system s.constraints;
-  return ()
+  Logs.debug (fun m ->
+      m "===== SOLVING %d CONSTRAINTS =====" (List.length s.constraints));
+  log_equations s.constraints;
+  let unification_result = unify s.constraints in
+  match unification_result with Ok _ -> return () | Error err -> fail err

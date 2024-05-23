@@ -204,7 +204,9 @@ and check_list expected_type elements =
 
 and check_unknown_list elements =
   match elements with
-  | [] -> error Error_ambiguous_list
+  | [] ->
+      let* typevar = new_typevar in
+      return @@ TypeList typevar
   | el :: elements ->
       let* first_el_type = check_expr None el in
       check_list (Some (TypeList first_el_type)) elements
@@ -247,14 +249,15 @@ and check_is_empty expected_type expr =
 (* - Sum types - *)
 
 and check_injection expected_type operator_type operator =
-  match expected_type with
-  | Some expected_type ->
-      let err = Error_unexpected_injection { expected = expected_type } in
-      let* l_t, r_t = expect_a_sum expected_type err in
-      let sum_t = TypeSum (l_t, r_t) in
-      let op_t = operator_type l_t r_t in
-      check_expr (Some op_t) operator *> return sum_t
-  | None -> error Error_ambiguous_sum_type
+  let* typevar = new_typevar in
+  let expected_type =
+    Option.value_or_thunk expected_type ~default:(fun _ -> typevar)
+  in
+  let err = Error_unexpected_injection { expected = expected_type } in
+  let* l_t, r_t = expect_a_sum expected_type err in
+  let sum_t = TypeSum (l_t, r_t) in
+  let op_t = operator_type l_t r_t in
+  check_expr (Some op_t) operator *> return sum_t
 
 and check_inl expected_type operator =
   let select_left_type l_t _ = l_t in
