@@ -179,8 +179,8 @@ and pass_decl = function
       let* body = pass_expr body in
       return @@ DeclFun (annots, name, params, ret, throw, decls, body)
   | DeclFunGeneric _ as t ->
-    (* When universal types are enabled, auto is not supported *)
-    return t
+      (* When universal types are enabled, auto is not supported *)
+      return t
   | _ -> Utils.not_implemented ()
 
 let pass_program (AProgram (l, exts, decls)) =
