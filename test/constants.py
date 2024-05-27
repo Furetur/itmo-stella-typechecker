@@ -29,5 +29,6 @@ REQUIRED_EXTENTIONS = {
     "#lists",
     "#records",
     "#sequencing",
-    "#type-reconstruction"
+    "#type-reconstruction",
+    "#universal-types"
 }

@@ -54,6 +54,14 @@ type error_kind =
   | Error_unexpected_memory_address of typeT
   (* Type reconstruction *)
   | Error_occurs_check_infinite_type of { type' : typeT; type_value : typeT }
+  (* Universal types *)
+  | Error_not_a_generic_function of typeT
+  | Error_incorrect_number_of_type_arguments of {
+      type' : typeT;
+      expected : int;
+      actual : int;
+    }
+  | Error_undefined_type_variable of stellaIdent
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -156,6 +164,15 @@ let show_kind = function
   | Error_occurs_check_infinite_type { type'; type_value } ->
       Printf.sprintf "ERROR_OCCURS_CHECK_INFINITE_TYPE: %s = %s" (pp_type type')
         (pp_type type_value)
+  | Error_not_a_generic_function t ->
+      Printf.sprintf "ERROR_NOT_A_GENERIC_FUNCTION: %s" (pp_type t)
+  | Error_incorrect_number_of_type_arguments { type'; expected; actual } ->
+      Printf.sprintf
+        "ERROR_INCORRECT_NUMBER_OF_TYPE_ARGUMENTS: Type '%s' expects %d type \
+         arguments, but got %d"
+        (pp_type type') expected actual
+  | Error_undefined_type_variable (StellaIdent name) ->
+      Printf.sprintf "ERROR_UNDEFINED_TYPE_VARIABLE: %s" name
 
 let show_stacktrace stacktrace =
   stacktrace
