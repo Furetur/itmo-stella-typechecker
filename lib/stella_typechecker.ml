@@ -7,6 +7,19 @@ open Stella_parser
 let type_reconstruction = "#type-reconstruction"
 let universal_types = "#universal-types"
 
+(* ---- Typecheckers ---- *)
+
+let simple_typechecker = Check_types.check_program
+
+let typechecker_with_reconstruction prog =
+  let prog = Replace_auto.replace_auto prog in
+  Logs.debug (fun m -> m "REPLACED AUTO: %s" (show_program prog));
+  Check_types_with_reconstruction.check_program prog
+
+let typechecker_with_universal prog =
+  Check_undefined_type_vars.check_program prog
+  *> Check_types_with_universal.check_program prog
+
 let get_type_checker prog =
   let open Extentions in
   let exts = get_extentions prog in
@@ -20,24 +33,24 @@ let get_type_checker prog =
         m
           "Detected #type-reconstruction extentiont -- using the appropriate \
            typechecker");
-    Check_types_with_reconstruction.check_program)
+    typechecker_with_reconstruction)
   else if with_universal then (
     Logs.debug (fun m ->
         m
           "Detected #universal-types extentiont -- using the appropriate \
            typechecker");
-    Check_types_with_universal.check_program)
+    typechecker_with_universal)
   else (
     Logs.debug (fun m ->
         m "No extra extentions detected -- using basic typechecker");
 
-    Check_types.check_program)
+    simple_typechecker)
+
+(* ----- Entry point ----- *)
 
 let check (prog : Stella_parser.Parsetree.program) : (unit, error) Result.t =
   Logs.debug (fun m -> m "AST: %s" (show_program prog));
   let* () = Check_main.check_main prog in
-  let prog = Replace_auto.replace_auto prog in
-  Logs.debug (fun m -> m "REPLACED AUTO: %s" (show_program prog));
   let typechecker = get_type_checker prog in
   let* () = typechecker prog in
   return ()

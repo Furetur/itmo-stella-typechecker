@@ -8,6 +8,18 @@ module Result_pass_syntax = struct
   let ( *> ) a b =
     let* _ = a in
     b
+
+  let many xs ~f =
+    let rec aux xs acc =
+      match xs with
+      | [] -> return acc
+      | a :: xs ->
+          let* b = f a in
+          aux xs (acc @ [ b ])
+    in
+    aux xs []
+
+  let many_unit xs ~f = many xs ~f *> return ()
 end
 
 module type PassConfig = sig
