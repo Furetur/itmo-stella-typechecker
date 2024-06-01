@@ -1,6 +1,10 @@
 from pathlib import Path
 
 
+TEST_SUITE_ROOT_DIR = Path(__file__).parent
+
+STELLA_FILE_SUFFIXES = { ".stella", ".st" }
+
 OK_TESTS_DIR = Path(__file__).parent / "stella-tests" / "ok"
 
 BAD_TESTS_DIR = Path(__file__).parent / "stella-tests" / "bad"
