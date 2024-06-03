@@ -441,7 +441,10 @@ and check_match expected_type scrutinee cases =
   | first_case :: rest_cases ->
       let* scrutinee_t = check_expr None scrutinee in
       let* case_t = check_match_case expected_type scrutinee_t first_case in
-      many rest_cases ~f:(check_match_case (Some case_t) scrutinee_t)
+      let expected_type' =
+        match expected_type with None -> case_t | Some t -> t
+      in
+      many rest_cases ~f:(check_match_case (Some expected_type') scrutinee_t)
       *> check_match_exhaustiveness scrutinee_t cases
       *> return case_t
 
