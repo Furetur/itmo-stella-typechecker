@@ -20,24 +20,19 @@ ERROR_NOT_IMPLEMENTED = "ERROR_NOT_IMPLEMENTED"
 ERROR_PARSE_ERROR = "PARSE_ERROR"
 
 REQUIRED_EXTENTIONS = {
-    "#natural-literals",
-    "#tuples",
     "#unit-type",
     "#pairs",
+    "#tuples",
+    "#records",
     "#let-bindings",
-    "#nullary-functions",
-    "#multiparameter-functions",
-    "#fixpoint-combinator",
+    "#type-ascriptions",
     "#sum-types",
     "#lists",
-    "#records",
-    "#panic",
+    "#fixpoint-combinator",
+    "#variants"
+    # Optional extentions
+    "#natural-literals",
+    "#nullary-functions",
+    "#multiparameter-functions",
     "#sequencing",
-    "#references",
-    "#exceptions",
-    "#exception-type-declaration",
-    "#structural-subtyping",
-    "#ambiguous-type-as-bottom",
-    "#top-type",
-    "#bottom-type"
 }
