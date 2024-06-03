@@ -1,7 +1,7 @@
 import os
 import re
 import subprocess
-from typing import Sequence
+from typing import Sequence, Set
 import pytest
 
 from .discover_tests import OK_RESULT, ErrorResult, OkResult, TestResult, SingleTest
@@ -33,13 +33,14 @@ def run_binary(args: Sequence[str]) -> TestResult:
     return ErrorResult(set(errors))
 
 
-def test_has_optional_extentions(test: SingleTest) -> bool:
-    return len(set(test.extentions) - REQUIRED_EXTENTIONS) > 0
+def test_get_optional_extentions(test: SingleTest) -> Set[str]:
+    return set(test.extentions) - REQUIRED_EXTENTIONS
 
 
 def pytest_interpret_result(test: SingleTest, actual_test_result: TestResult) -> None:
-    if test_has_optional_extentions(test):
-        pytest.skip()
+    optional_exts = test_get_optional_extentions(test)
+    if optional_exts:
+        pytest.skip(reason=f"Optional extentions: {optional_exts}")
     match (test.expected_result, actual_test_result):
         case (OkResult(), OkResult()):
             pass
