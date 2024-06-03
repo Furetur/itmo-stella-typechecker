@@ -1,5 +1,17 @@
+import os
 from pathlib import Path
 
+GIVEN_TEST_SUITE_ROOT_DIR = Path(os.environ["TEST"]) if "TEST" in os.environ else None
+
+DEFAULT_TEST_SUITE_ROOT_DIR = Path(__file__).parent
+
+TEST_SUITE_ROOT_DIR = (
+    GIVEN_TEST_SUITE_ROOT_DIR
+    if GIVEN_TEST_SUITE_ROOT_DIR is not None
+    else DEFAULT_TEST_SUITE_ROOT_DIR
+)
+
+STELLA_FILE_SUFFIXES = {".stella", ".st"}
 
 OK_TESTS_DIR = Path(__file__).parent / "stella-tests" / "ok"
 
@@ -16,19 +28,23 @@ ERROR_NOT_IMPLEMENTED = "ERROR_NOT_IMPLEMENTED"
 ERROR_PARSE_ERROR = "PARSE_ERROR"
 
 REQUIRED_EXTENTIONS = {
-    "#natural-literals",
-    "#tuples",
+    # === Stage 1 ===
     "#unit-type",
     "#pairs",
+    "#tuples",
+    "#records",
     "#let-bindings",
-    "#nullary-functions",
-    "#multiparameter-functions",
     "#type-ascriptions",
-    "#fixpoint-combinator",
     "#sum-types",
     "#lists",
-    "#records",
+    "#fixpoint-combinator",
+    "#variants",
+    # Optional extentions
+    "#natural-literals",
+    "#nullary-functions",
+    "#multiparameter-functions",
     "#sequencing",
+    # === Stage 3 ===
     "#type-reconstruction",
     "#universal-types"
 }
