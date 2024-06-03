@@ -44,4 +44,14 @@ REQUIRED_EXTENTIONS = {
     "#nullary-functions",
     "#multiparameter-functions",
     "#sequencing",
+    # === Stage 2 ===
+    "#references",
+    "#panic",
+    "#exceptions",
+    "#exception-type-declaration",
+    "#exception-type-annotation",
+    "#structural-subtyping",
+    "#ambiguous-type-as-bottom",
+    "#top-type",
+    "#bottom-type",
 }
