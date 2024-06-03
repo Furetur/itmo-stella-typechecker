@@ -457,13 +457,16 @@ and check_not_implemented_patterns cases =
 and check_fix expected_type expr =
   let* expr_t = check_expr None expr in
   match expr_t with
-  | TypeFun (_, ret_t) ->
-      let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
-      (* Fake-check the expression once again to require that it has the correct type *)
-      check_expr (Some needed_fun_t) expr
-      *>
-      let result_type = ret_t in
-      expect_equal_type expected_type result_type *> return result_type
+  | TypeFun (param_ts, ret_t) ->
+      if List.length param_ts <> 1 then
+        error Error_incorrect_number_of_arguments
+      else
+        let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
+        (* Fake-check the expression once again to require that it has the correct type *)
+        expect_equal_type (Some needed_fun_t) expr_t
+        *>
+        let result_type = ret_t in
+        expect_equal_type expected_type result_type *> return result_type
   | _ -> error Error_not_a_function
 
 and check_nat_rec expected_type n z s =

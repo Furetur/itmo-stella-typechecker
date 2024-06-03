@@ -1,3 +1,4 @@
+// ERROR_AMBIGUOUS_LIST_TYPE
 language core;
 
 extend with #lists ;

@@ -1,3 +1,4 @@
+// ERROR_INCORRECT_NUMBER_OF_ARGUMENTS
 language core;
 
 extend with #fixpoint-combinator, #nullary-functions;

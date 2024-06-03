@@ -24,6 +24,4 @@ let collect_exception_type (AProgram (_, _, decls)) : typeT option =
   let extract_exn_type = function DeclExceptionType t -> Some t | _ -> None in
   decls |> List.filter_map ~f:extract_exn_type |> List.last
 
-let pp_expected_type = function
-  | None -> "Unknown"
-  | Some t -> pp_type t
+let pp_expected_type = function None -> "Unknown" | Some t -> pp_type t
