@@ -410,6 +410,7 @@ and check_match_exhaustiveness scrutinee_t cases =
     let is_exhaustive =
       match scrutinee_t with
       | TypeSum _ -> is_sum_match_exhaustive pats
+      | TypeVariant t -> is_variant_match_exhaustive t pats
       | _ -> is_other_match_exhaustive pats
     in
     if not is_exhaustive then error Error_nonexhaustive_match_patterns
@@ -418,6 +419,19 @@ and check_match_exhaustiveness scrutinee_t cases =
 
 and check_match_branch expected_type varname var_t expr =
   with_new_binding varname var_t (check_expr expected_type expr)
+
+and check_match_variant_branch expected_type field_name pattern_data field_types
+    expr =
+  let variant_t = Variant_type.make field_types in
+  match Variant_type.lookup_field variant_t field_name with
+  | None -> error Error_unexpected_pattern_for_type
+  | Some typing -> (
+      match (typing, pattern_data) with
+      | NoTyping, NoPatternData -> check_expr expected_type expr
+      | SomeTyping var_t, SomePatternData (PatternVar varname) ->
+          check_match_branch expected_type varname var_t expr
+      | SomeTyping _, _ -> not_implemented ()
+      | _ -> error Error_unexpected_pattern_for_type)
 
 and check_match_case expected_type scrutinee_t case =
   match case with
@@ -433,6 +447,12 @@ and check_match_case expected_type scrutinee_t case =
       | _ -> error Error_unexpected_pattern_for_type)
   | AMatchCase (PatternVar varname, expr) ->
       check_match_branch expected_type varname scrutinee_t expr
+  | AMatchCase (PatternVariant (field_name, pattern_data), expr) -> (
+      match scrutinee_t with
+      | TypeVariant field_types ->
+          check_match_variant_branch expected_type field_name pattern_data
+            field_types expr
+      | _ -> error Error_unexpected_pattern_for_type)
   | _ -> not_implemented ()
 
 and check_match expected_type scrutinee cases =
@@ -581,6 +601,29 @@ and check_equality expected_type left right =
 and check_sequence expected_type expr1 expr2 =
   check_expr (Some TypeUnit) expr1 *> check_expr expected_type expr2
 
+(* Variant *)
+
+and check_variant expected_type ident data =
+  match expected_type with
+  | None -> error Error_ambiguous_variant
+  | Some (TypeVariant variant_field_types as expected_type) -> (
+      let variant_type = Variant_type.make variant_field_types in
+      match Variant_type.lookup_field variant_type ident with
+      | None ->
+          let err = Error_unexpected_variant_label (expected_type, ident) in
+          error err
+      | Some expected_typing ->
+          check_expr_data expected_typing data *> return expected_type)
+  | Some _ -> error Error_unexpected_variant
+
+and check_expr_data expected_typing expr_data =
+  match (expected_typing, expr_data) with
+  | SomeTyping expected_t, SomeExprData e ->
+      let* t = check_expr (Some expected_t) e in
+      return (SomeTyping t)
+  | NoTyping, NoExprData -> return NoTyping
+  | _ -> error Error_unknown
+
 (* - Main visitor - *)
 
 and check_param expected_type expr =
@@ -663,6 +706,8 @@ and check_expr expected_type expr =
   | Deref expr -> check_deref expected_type expr
   | ConstMemory _ -> check_const_memory expected_type
   | Assign (l, r) -> check_assign expected_type l r
+  (* Variants *)
+  | Variant (ident, data) -> check_variant expected_type ident data
   | _ -> expr_not_implemented expr
 
 and check_exprs (type_expr_pairs : (typeT * expr) list) : unit t =

@@ -22,6 +22,12 @@ module type Type_model_core = sig
 
   val is_subtype_top : subtype_checker -> typeT -> bool
   (* Checks whether the given type is a subtype of Top *)
+
+  val is_subtype_variant :
+    subtype_checker ->
+    s:variantFieldType list ->
+    t:variantFieldType list ->
+    bool
 end
 
 module Make_type_model (Core : Type_model_core) : Type_model = struct
@@ -57,11 +63,19 @@ module Make_type_model (Core : Type_model_core) : Type_model = struct
     | TypeRecord s, TypeRecord t -> Core.is_subtype_record is_subtype ~s ~t
     | TypeList s_el, TypeList t_el -> is_subtype_list ~s_el ~t_el
     | TypeRef s_el, TypeRef t_el -> is_subtype_ref ~s_el ~t_el
+    | TypeVariant s_fields, TypeVariant t_fields ->
+        Core.is_subtype_variant is_subtype ~s:s_fields ~t:t_fields
     | TypeNat, TypeNat | TypeBool, TypeBool | TypeUnit, TypeUnit -> true
     | s, TypeTop -> Core.is_subtype_top is_subtype s
     | TypeBottom, t -> Core.is_subtype_bottom is_subtype t
     | _ -> false
 end
+
+let is_subtype_optional_typing is_subtype s_typing t_typing =
+  match (s_typing, t_typing) with
+  | NoTyping, NoTyping -> false
+  | SomeTyping s, SomeTyping t -> is_subtype ~s ~t
+  | _ -> false
 
 let syntax_equality = Stdlib.( = )
 
@@ -70,6 +84,16 @@ module Syntax_equality_type_model : Type_model = Make_type_model (struct
   let is_subtype_record _ ~s ~t = syntax_equality s t
   let is_subtype_top _ _ = false
   let is_subtype_bottom _ _ = false
+
+  let rec is_subtype_variant is_subtype ~s ~t =
+    match (s, t) with
+    | [], [] -> true
+    | ( AVariantFieldType (StellaIdent s_name, s_typing) :: s_tail,
+        AVariantFieldType (StellaIdent t_name, t_typing) :: t_tail ) ->
+        String.(s_name = t_name)
+        && is_subtype_optional_typing is_subtype s_typing t_typing
+        && is_subtype_variant is_subtype ~s:s_tail ~t:t_tail
+    | _ -> false
 end)
 
 module Syntax_equality_with_top_bottom_type_model : Type_model =
@@ -78,6 +102,16 @@ Make_type_model (struct
   let is_subtype_record _ ~s ~t = syntax_equality s t
   let is_subtype_top _ _ = true
   let is_subtype_bottom _ _ = true
+
+  let rec is_subtype_variant is_subtype ~s ~t =
+    match (s, t) with
+    | [], [] -> true
+    | ( AVariantFieldType (StellaIdent s_name, s_typing) :: s_tail,
+        AVariantFieldType (StellaIdent t_name, t_typing) :: t_tail ) ->
+        String.(s_name = t_name)
+        && is_subtype_optional_typing is_subtype s_typing t_typing
+        && is_subtype_variant is_subtype ~s:s_tail ~t:t_tail
+    | _ -> false
 end)
 
 module Structural_subtyping_model : Type_model = Make_type_model (struct
@@ -117,6 +151,11 @@ module Structural_subtyping_model : Type_model = Make_type_model (struct
     | Ok type_pairs ->
         List.for_all type_pairs ~f:(fun (s, t) -> is_subtype ~s ~t)
     | _ -> false
+
+  let is_subtype_variant is_subtype ~s ~t =
+    let variant_s = Variant_type.make s in
+    let variant_t = Variant_type.make t in
+    Map.equal (is_subtype_optional_typing is_subtype) variant_s variant_t
 end)
 
 let choose_type_model exts : (module Type_model) =

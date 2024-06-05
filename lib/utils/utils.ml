@@ -25,3 +25,12 @@ let collect_exception_type (AProgram (_, _, decls)) : typeT option =
   decls |> List.filter_map ~f:extract_exn_type |> List.last
 
 let pp_expected_type = function None -> "Unknown" | Some t -> pp_type t
+
+module Stella_ident_comparator = struct
+  type t = stellaIdent
+
+  let compare (StellaIdent x) (StellaIdent y) = String.compare x y
+  let sexp_of_t (StellaIdent name) = Sexp.Atom name
+
+  include (val Base.Comparator.make ~compare ~sexp_of_t)
+end

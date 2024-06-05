@@ -53,6 +53,10 @@ type error_kind =
   | Error_unexpected_reference of typeT
   | Error_ambiguous_reference_type
   | Error_unexpected_memory_address of typeT
+  (* Variants *)
+  | Error_ambiguous_variant
+  | Error_unexpected_variant
+  | Error_unexpected_variant_label of typeT * stellaIdent
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -155,6 +159,13 @@ let show_kind = function
         (pp_type t)
   | Error_exception_type_not_declared -> "ERROR_EXCEPTION_TYPE_NOT_DECLARED"
   | Error_ambiguous_throw_type -> "ERROR_AMBIGUOUS_THROW_TYPE"
+  | Error_ambiguous_variant -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
+  | Error_unexpected_variant -> "ERROR_UNEXPECTED_VARIANT"
+  | Error_unexpected_variant_label (t, StellaIdent lab) ->
+      Printf.sprintf
+        "ERROR_UNEXPECTED_VARIANT_LABEL: Variant type %s does not have a label \
+         %s"
+        (pp_type t) lab
 
 let show { kind; stacktrace } =
   let trace =
