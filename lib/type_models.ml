@@ -14,15 +14,6 @@ module type Type_model_core = sig
     subtype_checker -> s:recordFieldType list -> t:recordFieldType list -> bool
   (* Checks that record S is subtype of record T *)
 
-  val is_subtype_tuple : subtype_checker -> s:typeT list -> t:typeT list -> bool
-  (* Checks that tuple S is subtype of tuple T *)
-
-  val is_subtype_bottom : subtype_checker -> typeT -> bool
-  (* Checks whether Bottom is a subtype of the given type *)
-
-  val is_subtype_top : subtype_checker -> typeT -> bool
-  (* Checks whether the given type is a subtype of Top *)
-
   val is_subtype_variant :
     subtype_checker ->
     s:variantFieldType list ->
@@ -44,6 +35,12 @@ module Make_type_model (Core : Type_model_core) : Type_model = struct
     | Unequal_lengths -> false
     | Ok param_pairs -> check_params param_pairs && check_ret_t
 
+  and is_subtype_tuple ~(s : typeT list) ~(t : typeT list) =
+    match List.zip s t with
+    | Ok type_pairs ->
+        List.for_all type_pairs ~f:(fun (s, t) -> is_subtype ~s ~t)
+    | _ -> false
+
   and is_subtype_sum ~s_left ~s_right ~t_left ~t_right =
     is_subtype ~s:s_left ~t:t_left && is_subtype ~s:s_right ~t:t_right
 
@@ -59,15 +56,15 @@ module Make_type_model (Core : Type_model_core) : Type_model = struct
         is_subtype_fun ~s_params ~s_ret ~t_params ~t_ret
     | TypeSum (s_left, s_right), TypeSum (t_left, t_right) ->
         is_subtype_sum ~s_left ~s_right ~t_left ~t_right
-    | TypeTuple s, TypeTuple t -> Core.is_subtype_tuple is_subtype ~s ~t
+    | TypeTuple s, TypeTuple t -> is_subtype_tuple ~s ~t
     | TypeRecord s, TypeRecord t -> Core.is_subtype_record is_subtype ~s ~t
     | TypeList s_el, TypeList t_el -> is_subtype_list ~s_el ~t_el
     | TypeRef s_el, TypeRef t_el -> is_subtype_ref ~s_el ~t_el
     | TypeVariant s_fields, TypeVariant t_fields ->
         Core.is_subtype_variant is_subtype ~s:s_fields ~t:t_fields
     | TypeNat, TypeNat | TypeBool, TypeBool | TypeUnit, TypeUnit -> true
-    | s, TypeTop -> Core.is_subtype_top is_subtype s
-    | TypeBottom, t -> Core.is_subtype_bottom is_subtype t
+    | _, TypeTop -> true
+    | TypeBottom, _ -> true
     | _ -> false
 end
 
@@ -80,10 +77,7 @@ let is_subtype_optional_typing is_subtype s_typing t_typing =
 let syntax_equality = Stdlib.( = )
 
 module Syntax_equality_type_model : Type_model = Make_type_model (struct
-  let is_subtype_tuple _ ~s ~t = syntax_equality s t
   let is_subtype_record _ ~s ~t = syntax_equality s t
-  let is_subtype_top _ _ = false
-  let is_subtype_bottom _ _ = false
 
   let rec is_subtype_variant is_subtype ~s ~t =
     match (s, t) with
@@ -98,10 +92,7 @@ end)
 
 module Syntax_equality_with_top_bottom_type_model : Type_model =
 Make_type_model (struct
-  let is_subtype_tuple _ ~s ~t = syntax_equality s t
   let is_subtype_record _ ~s ~t = syntax_equality s t
-  let is_subtype_top _ _ = true
-  let is_subtype_bottom _ _ = true
 
   let rec is_subtype_variant is_subtype ~s ~t =
     match (s, t) with
@@ -115,8 +106,6 @@ Make_type_model (struct
 end)
 
 module Structural_subtyping_model : Type_model = Make_type_model (struct
-  let is_subtype_top _ _ = true
-  let is_subtype_bottom _ _ = true
 
   let is_subtype_record (is_subtype : subtype_checker)
       ~(s : recordFieldType list) ~(t : recordFieldType list) =
@@ -144,13 +133,6 @@ module Structural_subtyping_model : Type_model = Make_type_model (struct
         m "Is %s a subtype of %s ==> %b" (pp_type s_type) (pp_type t_type)
           result);
     result
-
-  let is_subtype_tuple (is_subtype : subtype_checker) ~(s : typeT list)
-      ~(t : typeT list) =
-    match List.zip s t with
-    | Ok type_pairs ->
-        List.for_all type_pairs ~f:(fun (s, t) -> is_subtype ~s ~t)
-    | _ -> false
 
   let is_subtype_variant is_subtype ~s ~t =
     let variant_s = Variant_type.make s in
