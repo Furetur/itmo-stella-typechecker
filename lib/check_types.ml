@@ -4,13 +4,12 @@ open Stella_parser.Pretty_print_tree
 open Utils
 open Pattern_matching_utils
 open Errors
-open Type_models
 
 (* --- Pass Setup --- *)
 
 type state = {
   ambiguous_as_bottom : bool;
-  type_model : (module Type_model);
+  type_model : Type_model.is_subtype_checker;
   is_subtyping_enabled : bool;
   stacktrace : string list;
   typemap : Type_map.t;
@@ -79,28 +78,30 @@ let with_param_bindings param_decls pass =
   with_updated_typemap pass @@ fun typemap ->
   Type_map.add_params typemap param_decls
 
-let is_subtype ~subtype ~supertype =
+let replace_broad_error err new_err =
+  match err with
+  | Error_unexpected_subtype _ | Error_unexpected_type_for_expression _
+  | Error_unknown ->
+      new_err
+  | e -> e
+
+let is_subtype ?(new_err : error_kind option) subtype supertype =
+  let replace_err err =
+    match new_err with
+    | Some new_err -> replace_broad_error err new_err
+    | None -> err
+  in
   let* { type_model; _ } = get in
-  let module M = (val type_model) in
-  return (M.is_subtype ~s:subtype ~t:supertype)
+  let result = type_model ~s:subtype ~t:supertype in
+  match result with Ok () -> return () | Error err -> error (replace_err err)
 
 let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
-  | Some expected_type ->
-      let* { is_subtyping_enabled; _ } = get in
-      let* are_types_compatible =
-        is_subtype ~subtype:actual_type ~supertype:expected_type
-      in
-      if are_types_compatible then return actual_type
-      else
-        error
-          (if is_subtyping_enabled then
-             Error_unexpected_subtype
-               { expected = expected_type; actual = actual_type }
-           else
-             Error_unexpected_type_for_expression
-               { expected = expected_type; actual = actual_type })
+  | Some expected_type -> (
+      let* { type_model; _ } = get in
+      let result = type_model ~s:actual_type ~t:expected_type in
+      match result with Ok _ -> return actual_type | Error err -> error err)
 
 let disambiguate_with_bottom otherwise_error =
   let* { ambiguous_as_bottom; _ } = get in
@@ -137,9 +138,11 @@ and check_abstraction expected_type param_decls body_expr =
       m "check_abstraction: enter, expected_type=%s"
         (pp_expected_type expected_type));
   let expect_equal_param_types (expected, actual) =
-    let* is_ok = is_subtype ~subtype:expected ~supertype:actual in
-    if is_ok then return ()
-    else error (Error_unexpected_type_for_parameter { expected; actual })
+    let* { is_subtyping_enabled; _ } = get in
+    if not is_subtyping_enabled then
+      let err = Error_unexpected_type_for_parameter { expected; actual } in
+      is_subtype ~new_err:err expected actual
+    else is_subtype expected actual
   in
   let check_params expected_param_types =
     let actual_param_types =
@@ -288,18 +291,8 @@ and diagnose_strict_record_type_mismatch record_field_types record_bindings =
 and check_known_type_record record_field_types record_bindings =
   let expected_record_type = TypeRecord record_field_types in
   let* actual_record_type = check_unknown_record record_bindings in
-  let* is_ok =
-    is_subtype ~subtype:actual_record_type ~supertype:expected_record_type
-  in
-  if is_ok then return actual_record_type
-  else (
-    Logs.debug (fun m ->
-        m
-          "record types do not match expected=%s actual=%s, entering \
-           diagnostics"
-          (pp_type expected_record_type)
-          (pp_type actual_record_type));
-    diagnose_strict_record_type_mismatch record_field_types record_bindings)
+  is_subtype actual_record_type expected_record_type
+  *> return actual_record_type
 
 and check_unknown_record record_bindings =
   let check_each_binding (ABinding (ident, expr)) =
@@ -530,19 +523,26 @@ and check_try_catch expected_type try_expr pat catch_expr =
 (* - References - *)
 
 and check_ref expected_type expr =
-  let* expr_t = check_expr None expr in
   match expected_type with
-  | None -> return (TypeRef expr_t)
+  | None ->
+      let* expr_t = check_expr None expr in
+      return (TypeRef expr_t)
   | Some (TypeRef arg_t) ->
-      expect_equal_type (Some arg_t) expr_t *> return (TypeRef expr_t)
+      let* expr_t = check_expr (Some arg_t) expr in
+      return (TypeRef expr_t)
   | Some TypeTop -> return TypeTop
   | Some t -> error (Error_unexpected_reference t)
 
 and check_deref expected_type expr =
-  let* expr_t = check_expr None expr in
-  match expr_t with
-  | TypeRef t -> expect_equal_type expected_type t
-  | t -> error (Error_not_a_reference t)
+  match expected_type with
+  | Some expected_type ->
+      let expected_ref_t = TypeRef expected_type in
+      check_expr (Some expected_ref_t) expr *> return expected_type
+  | None -> (
+      let* expr_t = check_expr None expr in
+      match expr_t with
+      | TypeRef t -> return t
+      | t -> error (Error_not_a_reference t))
 
 and check_const_memory expected_type =
   match expected_type with
@@ -626,17 +626,7 @@ and check_expr_data expected_typing expr_data =
 
 (* - Main visitor - *)
 
-and check_param expected_type expr =
-  let* expr_t = check_expr None expr in
-  match expected_type with
-  | None -> return expr_t
-  | Some expected_type ->
-      let* are_comp = is_subtype ~supertype:expected_type ~subtype:expr_t in
-      if are_comp then return expr_t
-      else
-        error
-          (Error_unexpected_type_for_parameter
-             { expected = expected_type; actual = expr_t })
+and check_param expected_type expr = check_expr expected_type expr
 
 and check_expr expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type
@@ -764,7 +754,7 @@ let check_program (AProgram (_, _, decls) as prog) : unit pass_result =
   let global_type_map = make_globals_type_map prog in
   let exception_type = collect_exception_type prog in
   let exts = Extentions.get_extentions prog in
-  let type_model = choose_type_model exts in
+  let type_model = Choose_type_model.choose_type_model exts in
   let init =
     {
       stacktrace = [];

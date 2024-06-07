@@ -34,3 +34,5 @@ module Stella_ident_comparator = struct
 
   include (val Base.Comparator.make ~compare ~sexp_of_t)
 end
+
+let pp_typing = function NoTyping -> "notyping" | SomeTyping t -> pp_type t

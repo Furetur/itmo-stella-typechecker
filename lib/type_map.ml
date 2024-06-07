@@ -29,3 +29,5 @@ let add_params map params =
     List.map params ~f:(fun (AParamDecl (id, t)) -> (id, t))
   in
   set_types map ident_type_pairs
+
+let keys_set typemap = typemap |> Map.keys |> Set.of_list (module String)

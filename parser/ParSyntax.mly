@@ -454,7 +454,7 @@ expr4 : expr4 SYMB26 expr5 { Multiply ($1, $3) }
   | expr5 {  $1 }
   ;
 
-expr5 : KW_new SYMB4 expr5 SYMB5 { Ref $3 }
+expr5 : KW_new SYMB4 expr SYMB5 { Ref $3 }
   | SYMB26 expr5 { Deref $2 }
   | expr6 {  $1 }
   ;

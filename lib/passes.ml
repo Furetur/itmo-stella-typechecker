@@ -8,6 +8,16 @@ module Result_pass_syntax = struct
   let ( *> ) a b =
     let* _ = a in
     b
+
+  let ok = return ()
+
+  let rec all_unit (list : 'a list) ~(f : 'a -> (unit, 'b) Result.t) :
+      (unit, 'b) Result.t =
+    match list with
+    | [] -> ok
+    | h :: t ->
+        let* _ = f h in
+        all_unit t ~f
 end
 
 module type PassConfig = sig
@@ -41,6 +51,16 @@ module SingleError (Cfg : PassConfig) = struct
    fun s ->
     let pass_result = t s in
     match pass_result with Error err -> Error err | Ok (s, a) -> f a s
+
+  let catch_error (f : unit -> 'a t) ~(handle : Cfg.pass_error -> 'a t) : 'a t =
+   fun state ->
+    let result = f () state in
+    match result with
+    | Ok x -> Ok x
+    | Error err ->
+        let t = handle err in
+        (* TODO: this is old state *)
+        t state
 
   (* ----- Helpers ----- *)
 
