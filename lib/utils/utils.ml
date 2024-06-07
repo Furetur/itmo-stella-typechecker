@@ -34,3 +34,14 @@ let make_typevar prefix id =
   let name = StellaIdent name in
   let typevar = TypeVar name in
   typevar
+
+module Stella_ident_comparator = struct
+  type t = stellaIdent
+
+  let compare (StellaIdent x) (StellaIdent y) = String.compare x y
+  let sexp_of_t (StellaIdent name) = Sexp.Atom name
+
+  include (val Base.Comparator.make ~compare ~sexp_of_t)
+end
+
+let pp_typing = function NoTyping -> "notyping" | SomeTyping t -> pp_type t

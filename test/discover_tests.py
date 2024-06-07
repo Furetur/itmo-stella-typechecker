@@ -1,9 +1,14 @@
 from dataclasses import dataclass
 from pathlib import Path
 import re
-from typing import Sequence, Set, Tuple
+from typing import Iterable, Sequence, Set, Tuple
 
-from .constants import ERROR_REGEX, EXTENTION_REGEX, OK_TESTS_DIR, BAD_TESTS_DIR
+from .constants import (
+    ERROR_REGEX,
+    EXTENTION_REGEX,
+    STELLA_FILE_SUFFIXES,
+    TEST_SUITE_ROOT_DIR,
+)
 
 
 @dataclass(frozen=True)
@@ -33,9 +38,31 @@ class SingleTest:
     extentions: Sequence[str]
 
 
-def read_test(path: Path, expected_result: TestResult) -> SingleTest:
+def find_expected_errors_in_path(test_file: Path) -> Set[str]:
+    parent_dir_names = (dir.name for dir in test_file.parents if dir.is_dir())
+    matches = (re.fullmatch(ERROR_REGEX, name) for name in parent_dir_names)
+    return set(match.string for match in matches if match)
+
+
+def find_expected_errors_in_text(test_file: Path) -> Set[str]:
+    text = test_file.read_text()
+    return set(re.findall(ERROR_REGEX, text))
+
+
+def get_expected_result(test_file: Path) -> TestResult:
+    expected_error_types = find_expected_errors_in_text(
+        test_file
+    ) | find_expected_errors_in_path(test_file)
+    if expected_error_types:
+        return ErrorResult(expected_error_types)
+    else:
+        return OkResult()
+
+
+def read_test(path: Path) -> SingleTest:
     text = path.read_text()
     extentions = re.findall(EXTENTION_REGEX, text)
+    expected_result = get_expected_result(path)
     match expected_result:
         case OkResult():
             pass
@@ -47,30 +74,19 @@ def read_test(path: Path, expected_result: TestResult) -> SingleTest:
     return SingleTest(path=path, expected_result=expected_result, extentions=extentions)
 
 
-def discover_ok_tests() -> Sequence[SingleTest]:
-    paths = OK_TESTS_DIR.iterdir()
-    return [read_test(p, OK_RESULT) for p in paths if p.is_file()]
+def discover_stella_files() -> Iterable[Path]:
+    def helper(dir: Path) -> Iterable[Path]:
+        for path in dir.iterdir():
+            if path.is_file() and path.suffix in STELLA_FILE_SUFFIXES:
+                yield path
+            if path.is_dir():
+                yield from helper(path)
 
-
-def discover_bad_tests() -> Sequence[SingleTest]:
-    def get_tests_for_single_error_type(dir_path: Path) -> Sequence[SingleTest]:
-        error_type = dir_path.stem
-        return [
-            read_test(p, ErrorResult({error_type}))
-            for p in dir_path.iterdir()
-            if p.is_file()
-        ]
-
-    tests = []
-    for dir in BAD_TESTS_DIR.iterdir():
-        if not dir.is_dir():
-            continue
-        tests.extend(get_tests_for_single_error_type(dir))
-    return tests
+    return helper(TEST_SUITE_ROOT_DIR)
 
 
 def discover_tests() -> Sequence[SingleTest]:
-    return discover_ok_tests() + discover_bad_tests()
+    return [read_test(path) for path in discover_stella_files()]
 
 
 def pytest_discover_tests() -> Sequence[Tuple[SingleTest]]:

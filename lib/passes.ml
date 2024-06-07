@@ -20,6 +20,15 @@ module Result_pass_syntax = struct
     aux xs []
 
   let many_unit xs ~f = many xs ~f *> return ()
+  let ok = return ()
+
+  let rec all_unit (list : 'a list) ~(f : 'a -> (unit, 'b) Result.t) :
+      (unit, 'b) Result.t =
+    match list with
+    | [] -> ok
+    | h :: t ->
+        let* _ = f h in
+        all_unit t ~f
 end
 
 module type PassConfig = sig

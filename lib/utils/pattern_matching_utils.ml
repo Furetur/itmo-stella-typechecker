@@ -1,5 +1,6 @@
 open Base
 open Stella_parser.Parsetree
+open Utils
 
 let does_match_have_not_implemented_patterns patterns =
   let is_not_implemented = function
@@ -35,6 +36,19 @@ let is_sum_match_exhaustive patterns =
         \ has_inr=%b\n\
         \ result=%b" has_var has_inl has_inr result);
   result
+
+let get_variant_constructors_from_patterns patterns =
+  patterns
+  |> List.filter_map ~f:(function
+       | PatternVariant (name, _) -> Some name
+       | _ -> None)
+  |> Set.of_list (module Stella_ident_comparator)
+
+let is_variant_match_exhaustive field_types patterns =
+  let variant_t = Variant_type.make field_types in
+  let variant_constructors = Variant_type.set_of_constructors variant_t in
+  let match_constructors = get_variant_constructors_from_patterns patterns in
+  Set.is_subset variant_constructors ~of_:match_constructors
 
 let is_other_match_exhaustive patterns =
   List.exists patterns ~f:(function PatternVar _ -> true | _ -> false)

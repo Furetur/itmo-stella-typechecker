@@ -4,6 +4,7 @@ open Stella_parser.Parsetree
 open Utils
 
 type error_kind =
+  | Error_unexpected_subtype of { expected : typeT; actual : typeT }
   | Error_missing_main
   | Error_undefined_variable of stellaIdent
   | Error_unexpected_type_for_expression of { expected : typeT; actual : typeT }
@@ -62,6 +63,10 @@ type error_kind =
       actual : int;
     }
   | Error_undefined_type_variable of stellaIdent
+  (* Variants *)
+  | Error_ambiguous_variant
+  | Error_unexpected_variant
+  | Error_unexpected_variant_label of typeT * stellaIdent
 
 type error = { kind : error_kind; stacktrace : string list }
 type 'a pass_result = ('a, error) Result.t
@@ -69,6 +74,9 @@ type 'a pass_result = ('a, error) Result.t
 let whole_file_error kind = { kind; stacktrace = [] }
 
 let show_kind = function
+  | Error_unexpected_subtype { expected; actual } ->
+      sprintf "ERROR_UNEXPECTED_SUBTYPE: '%s' is not a subtype of '%s'"
+        (pp_type actual) (pp_type expected)
   | Error_missing_main -> "ERROR_MISSING_MAIN"
   | Error_undefined_variable (StellaIdent name) ->
       sprintf "ERROR_UNDEFINED_VARIABLE: '%s'" name
@@ -173,6 +181,13 @@ let show_kind = function
         (pp_type type') expected actual
   | Error_undefined_type_variable (StellaIdent name) ->
       Printf.sprintf "ERROR_UNDEFINED_TYPE_VARIABLE: %s" name
+  | Error_ambiguous_variant -> "ERROR_AMBIGUOUS_VARIANT_TYPE"
+  | Error_unexpected_variant -> "ERROR_UNEXPECTED_VARIANT"
+  | Error_unexpected_variant_label (t, StellaIdent lab) ->
+      Printf.sprintf
+        "ERROR_UNEXPECTED_VARIANT_LABEL: Variant type %s does not have a label \
+         %s"
+        (pp_type t) lab
 
 let show_stacktrace stacktrace =
   stacktrace

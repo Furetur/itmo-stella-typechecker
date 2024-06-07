@@ -7,7 +7,14 @@ open Errors
 
 (* --- Pass Setup --- *)
 
-type state = { stacktrace : string list; typemap : Type_map.t }
+type state = {
+  ambiguous_as_bottom : bool;
+  type_model : Type_model.is_subtype_checker;
+  is_subtyping_enabled : bool;
+  stacktrace : string list;
+  typemap : Type_map.t;
+  exception_type : typeT option;
+}
 
 module ThisPass = Passes.SingleError (struct
   type pass_state = state
@@ -71,15 +78,34 @@ let with_param_bindings param_decls pass =
   with_updated_typemap pass @@ fun typemap ->
   Type_map.add_params typemap param_decls
 
+let replace_broad_error err new_err =
+  match err with
+  | Error_unexpected_subtype _ | Error_unexpected_type_for_expression _
+  | Error_unknown ->
+      new_err
+  | e -> e
+
+let is_subtype ?(new_err : error_kind option) subtype supertype =
+  let replace_err err =
+    match new_err with
+    | Some new_err -> replace_broad_error err new_err
+    | None -> err
+  in
+  let* { type_model; _ } = get in
+  let result = type_model ~s:subtype ~t:supertype in
+  match result with Ok () -> return () | Error err -> error (replace_err err)
+
 let expect_equal_type expected_type actual_type =
   match expected_type with
   | None -> return actual_type
-  | Some expected_type ->
-      if Stdlib.(expected_type = actual_type) then return actual_type
-      else
-        error
-          (Error_unexpected_type_for_expression
-             { expected = expected_type; actual = actual_type })
+  | Some expected_type -> (
+      let* { type_model; _ } = get in
+      let result = type_model ~s:actual_type ~t:expected_type in
+      match result with Ok _ -> return actual_type | Error err -> error err)
+
+let disambiguate_with_bottom otherwise_error =
+  let* { ambiguous_as_bottom; _ } = get in
+  if ambiguous_as_bottom then return TypeBottom else error otherwise_error
 
 (* ----- Pass ----- *)
 
@@ -112,8 +138,11 @@ and check_abstraction expected_type param_decls body_expr =
       m "check_abstraction: enter, expected_type=%s"
         (pp_expected_type expected_type));
   let expect_equal_param_types (expected, actual) =
-    if Stdlib.( = ) expected actual then return ()
-    else error (Error_unexpected_type_for_parameter { expected; actual })
+    let* { is_subtyping_enabled; _ } = get in
+    if not is_subtyping_enabled then
+      let err = Error_unexpected_type_for_parameter { expected; actual } in
+      is_subtype ~new_err:err expected actual
+    else is_subtype expected actual
   in
   let check_params expected_param_types =
     let actual_param_types =
@@ -133,6 +162,8 @@ and check_abstraction expected_type param_decls body_expr =
       check_params expected_param_types
       *> check_abstraction_body (Some expected_ret_t) param_decls body_expr
       *> return result_t
+  | Some TypeTop ->
+      check_unknown_abstraction param_decls body_expr *> return TypeTop
   | Some t -> error (Error_unexpected_lambda { expected = t })
   | None -> check_unknown_abstraction param_decls body_expr
 
@@ -200,6 +231,7 @@ and check_tuple expected_type (exprs : expr list) =
         zip_or_error wrong_length_error component_types exprs
       in
       check_exprs type_expr_pairs *> return (TypeTuple component_types)
+  | Some TypeTop -> many exprs ~f:(check_expr None) *> return TypeTop
   | Some expected_type -> error (Error_unexpected_tuple { expected_type })
   | None ->
       let* actual_component_types = many exprs ~f:(check_expr None) in
@@ -224,10 +256,11 @@ and check_record expected_type bindings =
   match expected_type with
   | Some (TypeRecord field_types) ->
       check_known_type_record field_types bindings
+  | Some TypeTop -> check_unknown_record bindings *> return TypeTop
   | Some t -> error (Error_unexpected_record t)
   | None -> check_unknown_record bindings
 
-and check_known_type_record record_field_types record_bindings =
+and diagnose_strict_record_type_mismatch record_field_types record_bindings =
   let record_type = TypeRecord record_field_types in
   let check_each_binding remaining_fields_typemap (ABinding (field_ident, expr))
       =
@@ -255,6 +288,12 @@ and check_known_type_record record_field_types record_bindings =
         (Error_missing_record_fields
            { record_type; field_name = StellaIdent field_name })
 
+and check_known_type_record record_field_types record_bindings =
+  let expected_record_type = TypeRecord record_field_types in
+  let* actual_record_type = check_unknown_record record_bindings in
+  is_subtype actual_record_type expected_record_type
+  *> return actual_record_type
+
 and check_unknown_record record_bindings =
   let check_each_binding (ABinding (ident, expr)) =
     let* expr_t = check_expr None expr in
@@ -273,25 +312,31 @@ and check_list expected_type elements =
   | Some (TypeList element_type as list_type) ->
       many_unit elements ~f:(check_each_element (Some element_type))
       *> return list_type
+  | Some TypeTop -> check_unknown_list elements *> return TypeTop
   | Some t -> error (Error_unexpected_list { expected = t })
   | None -> check_unknown_list elements
 
 and check_unknown_list elements =
   match elements with
-  | [] -> error Error_ambiguous_list
+  | [] ->
+      let* el_t = disambiguate_with_bottom Error_ambiguous_list in
+      return (TypeList el_t)
   | el :: elements ->
       let* first_el_type = check_expr None el in
       check_list (Some (TypeList first_el_type)) elements
+
+and check_unknown_cons_list head tail =
+  let* head_t = check_expr None head in
+  let list_t = TypeList head_t in
+  check_expr (Some list_t) tail
 
 and check_cons_list expected_type head tail =
   match expected_type with
   | Some (TypeList element_type as list_type) ->
       check_expr (Some element_type) head *> check_expr (Some list_type) tail
+  | Some TypeTop -> check_unknown_cons_list head tail *> return TypeTop
   | Some t -> error (Error_unexpected_list { expected = t })
-  | None ->
-      let* head_t = check_expr None head in
-      let list_t = TypeList head_t in
-      check_expr (Some list_t) tail
+  | None -> check_unknown_cons_list head tail
 
 and check_head expected_type expr =
   match expected_type with
@@ -311,34 +356,40 @@ and check_tail expected_type expr =
   | t -> error (Error_not_a_list t)
 
 and check_is_empty expected_type expr =
-  match expected_type with
-  | None | Some TypeBool -> (
-      let* expr_t = check_expr None expr in
-      match expr_t with
-      | TypeList _ -> return TypeBool
-      | _ -> error (Error_not_a_list expr_t))
-  | Some t ->
-      error
-        (Error_unexpected_type_for_expression
-           { expected = t; actual = TypeBool })
+  expect_equal_type expected_type TypeBool
+  *>
+  let* expr_t = check_expr None expr in
+  match expr_t with
+  | TypeList _ -> return TypeBool
+  | TypeBottom -> return TypeBottom
+  | _ -> error (Error_not_a_list expr_t)
 
 (* - Sum types - *)
 
-and check_injection expected_type operator_type operator =
+and check_unknown_injection make_sum_type operator =
+  let* operator_t = check_expr None operator in
+  let* other_t = disambiguate_with_bottom Error_ambiguous_sum_type in
+  return (make_sum_type operator_t other_t)
+
+and check_injection expected_type make_sum_type select_operator_t operator =
   match expected_type with
   | Some (TypeSum (l_t, r_t) as sum_t) ->
-      let op_t = operator_type l_t r_t in
+      let op_t = select_operator_t l_t r_t in
       check_expr (Some op_t) operator *> return sum_t
-  | None -> error Error_ambiguous_sum_type
+  | None -> check_unknown_injection make_sum_type operator
+  | Some TypeTop ->
+      check_unknown_injection make_sum_type operator *> return TypeTop
   | Some t -> error (Error_unexpected_injection { expected = t })
 
 and check_inl expected_type operator =
   let select_left_type l_t _ = l_t in
-  check_injection expected_type select_left_type operator
+  let make_sum_type op_t other_t = TypeSum (op_t, other_t) in
+  check_injection expected_type make_sum_type select_left_type operator
 
 and check_inr expected_type operator =
   let select_right_type _ r_t = r_t in
-  check_injection expected_type select_right_type operator
+  let make_sum_type op_t other_t = TypeSum (other_t, op_t) in
+  check_injection expected_type make_sum_type select_right_type operator
 
 (* - Pattern Matching - *)
 
@@ -352,6 +403,7 @@ and check_match_exhaustiveness scrutinee_t cases =
     let is_exhaustive =
       match scrutinee_t with
       | TypeSum _ -> is_sum_match_exhaustive pats
+      | TypeVariant t -> is_variant_match_exhaustive t pats
       | _ -> is_other_match_exhaustive pats
     in
     if not is_exhaustive then error Error_nonexhaustive_match_patterns
@@ -360,6 +412,19 @@ and check_match_exhaustiveness scrutinee_t cases =
 
 and check_match_branch expected_type varname var_t expr =
   with_new_binding varname var_t (check_expr expected_type expr)
+
+and check_match_variant_branch expected_type field_name pattern_data field_types
+    expr =
+  let variant_t = Variant_type.make field_types in
+  match Variant_type.lookup_field variant_t field_name with
+  | None -> error Error_unexpected_pattern_for_type
+  | Some typing -> (
+      match (typing, pattern_data) with
+      | NoTyping, NoPatternData -> check_expr expected_type expr
+      | SomeTyping var_t, SomePatternData (PatternVar varname) ->
+          check_match_branch expected_type varname var_t expr
+      | SomeTyping _, _ -> not_implemented ()
+      | _ -> error Error_unexpected_pattern_for_type)
 
 and check_match_case expected_type scrutinee_t case =
   match case with
@@ -375,6 +440,12 @@ and check_match_case expected_type scrutinee_t case =
       | _ -> error Error_unexpected_pattern_for_type)
   | AMatchCase (PatternVar varname, expr) ->
       check_match_branch expected_type varname scrutinee_t expr
+  | AMatchCase (PatternVariant (field_name, pattern_data), expr) -> (
+      match scrutinee_t with
+      | TypeVariant field_types ->
+          check_match_variant_branch expected_type field_name pattern_data
+            field_types expr
+      | _ -> error Error_unexpected_pattern_for_type)
   | _ -> not_implemented ()
 
 and check_match expected_type scrutinee cases =
@@ -383,7 +454,10 @@ and check_match expected_type scrutinee cases =
   | first_case :: rest_cases ->
       let* scrutinee_t = check_expr None scrutinee in
       let* case_t = check_match_case expected_type scrutinee_t first_case in
-      many rest_cases ~f:(check_match_case (Some case_t) scrutinee_t)
+      let expected_type' =
+        match expected_type with None -> case_t | Some t -> t
+      in
+      many rest_cases ~f:(check_match_case (Some expected_type') scrutinee_t)
       *> check_match_exhaustiveness scrutinee_t cases
       *> return case_t
 
@@ -399,13 +473,16 @@ and check_not_implemented_patterns cases =
 and check_fix expected_type expr =
   let* expr_t = check_expr None expr in
   match expr_t with
-  | TypeFun (_, ret_t) ->
-      let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
-      (* Fake-check the expression once again to require that it has the correct type *)
-      check_expr (Some needed_fun_t) expr
-      *>
-      let result_type = ret_t in
-      expect_equal_type expected_type result_type *> return result_type
+  | TypeFun (param_ts, ret_t) ->
+      if List.length param_ts <> 1 then
+        error Error_incorrect_number_of_arguments
+      else
+        let needed_fun_t = TypeFun ([ ret_t ], ret_t) in
+        (* Fake-check the expression once again to require that it has the correct type *)
+        expect_equal_type (Some needed_fun_t) expr_t
+        *>
+        let result_type = ret_t in
+        expect_equal_type expected_type result_type *> return result_type
   | _ -> error Error_not_a_function
 
 and check_nat_rec expected_type n z s =
@@ -414,27 +491,67 @@ and check_nat_rec expected_type n z s =
      let expected_s_t = TypeFun ([ TypeNat ], TypeFun ([ t ], t)) in
      check_expr (Some expected_s_t) s *> return t
 
+(* - Errors - *)
+
+and check_panic expected_type =
+  match expected_type with
+  | None -> disambiguate_with_bottom Error_ambiguous_panic_type
+  | Some t -> return t
+
+and check_throw expected_type expr =
+  let* { exception_type; _ } = get in
+  match exception_type with
+  | None -> error Error_exception_type_not_declared
+  | Some exn_t -> (
+      match expected_type with
+      | None -> disambiguate_with_bottom Error_ambiguous_throw_type
+      | Some result_t -> check_expr (Some exn_t) expr *> return result_t)
+
+and check_try_with expected_type try_expr with_expr =
+  let* expr_t = check_expr expected_type try_expr in
+  check_expr (Some expr_t) with_expr
+
+and check_try_catch expected_type try_expr pat catch_expr =
+  let* { exception_type; _ } = get in
+  match exception_type with
+  | None -> error Error_exception_type_not_declared
+  | Some exn_t ->
+      let* expr_t = check_expr expected_type try_expr in
+      let case = AMatchCase (pat, catch_expr) in
+      check_match_case (Some expr_t) exn_t case
+
 (* - References - *)
 
 and check_ref expected_type expr =
-  let* expr_t = check_expr None expr in
   match expected_type with
-  | None -> return (TypeRef expr_t)
+  | None ->
+      let* expr_t = check_expr None expr in
+      return (TypeRef expr_t)
   | Some (TypeRef arg_t) ->
-      expect_equal_type (Some arg_t) expr_t *> return (TypeRef expr_t)
+      let* expr_t = check_expr (Some arg_t) expr in
+      return (TypeRef expr_t)
+  | Some TypeTop -> return TypeTop
   | Some t -> error (Error_unexpected_reference t)
 
 and check_deref expected_type expr =
-  let* expr_t = check_expr None expr in
-  match expr_t with
-  | TypeRef t -> expect_equal_type expected_type t
-  | t -> error (Error_not_a_reference t)
+  match expected_type with
+  | Some expected_type ->
+      let expected_ref_t = TypeRef expected_type in
+      check_expr (Some expected_ref_t) expr *> return expected_type
+  | None -> (
+      let* expr_t = check_expr None expr in
+      match expr_t with
+      | TypeRef t -> return t
+      | t -> error (Error_not_a_reference t))
 
 and check_const_memory expected_type =
   match expected_type with
   | Some (TypeRef t) -> return (TypeRef t)
+  | Some TypeTop -> return TypeTop
   | Some t -> error (Error_unexpected_memory_address t)
-  | None -> error Error_ambiguous_reference_type
+  | None ->
+      let* el_t = disambiguate_with_bottom Error_ambiguous_reference_type in
+      return (TypeRef el_t)
 
 and check_assign expected_type l r =
   expect_equal_type expected_type TypeUnit
@@ -484,18 +601,32 @@ and check_equality expected_type left right =
 and check_sequence expected_type expr1 expr2 =
   check_expr (Some TypeUnit) expr1 *> check_expr expected_type expr2
 
+(* Variant *)
+
+and check_variant expected_type ident data =
+  match expected_type with
+  | None -> error Error_ambiguous_variant
+  | Some (TypeVariant variant_field_types as expected_type) -> (
+      let variant_type = Variant_type.make variant_field_types in
+      match Variant_type.lookup_field variant_type ident with
+      | None ->
+          let err = Error_unexpected_variant_label (expected_type, ident) in
+          error err
+      | Some expected_typing ->
+          check_expr_data expected_typing data *> return expected_type)
+  | Some _ -> error Error_unexpected_variant
+
+and check_expr_data expected_typing expr_data =
+  match (expected_typing, expr_data) with
+  | SomeTyping expected_t, SomeExprData e ->
+      let* t = check_expr (Some expected_t) e in
+      return (SomeTyping t)
+  | NoTyping, NoExprData -> return NoTyping
+  | _ -> error Error_unknown
+
 (* - Main visitor - *)
 
-and check_param expected_type expr =
-  let* expr_t = check_expr None expr in
-  match expected_type with
-  | None -> return expr_t
-  | Some expected_type ->
-      if Stdlib.(expected_type = expr_t) then return expr_t
-      else
-        error
-          (Error_unexpected_type_for_parameter
-             { expected = expected_type; actual = expr_t })
+and check_param expected_type expr = check_expr expected_type expr
 
 and check_expr expected_type expr =
   in_expr_error_context (printTree prtExpr expr) expected_type
@@ -553,11 +684,20 @@ and check_expr expected_type expr =
   (* Recursion *)
   | Fix expr -> check_fix expected_type expr
   | NatRec (n, z, s) -> check_nat_rec expected_type n z s
+  (* Errors *)
+  | Panic -> check_panic expected_type
+  | Throw e -> check_throw expected_type e
+  | TryWith (try_expr, with_expr) ->
+      check_try_with expected_type try_expr with_expr
+  | TryCatch (try_expr, pat, catch_expr) ->
+      check_try_catch expected_type try_expr pat catch_expr
   (* References *)
   | Ref expr -> check_ref expected_type expr
   | Deref expr -> check_deref expected_type expr
   | ConstMemory _ -> check_const_memory expected_type
   | Assign (l, r) -> check_assign expected_type l r
+  (* Variants *)
+  | Variant (ident, data) -> check_variant expected_type ident data
   | _ -> expr_not_implemented expr
 
 and check_exprs (type_expr_pairs : (typeT * expr) list) : unit t =
@@ -612,6 +752,18 @@ let make_globals_type_map (AProgram (_, _, decls)) =
 
 let check_program (AProgram (_, _, decls) as prog) : unit pass_result =
   let global_type_map = make_globals_type_map prog in
-  let init = { stacktrace = []; typemap = global_type_map } in
+  let exception_type = collect_exception_type prog in
+  let exts = Extentions.get_extentions prog in
+  let type_model = Choose_type_model.choose_type_model exts in
+  let init =
+    {
+      stacktrace = [];
+      typemap = global_type_map;
+      exception_type;
+      type_model;
+      ambiguous_as_bottom = Extentions.is_bottom_disambiguation_enabled exts;
+      is_subtyping_enabled = Extentions.is_structural_subtyping_enabled exts;
+    }
+  in
   let pass = many_unit decls ~f:check_decl in
   run_pass ~init pass
