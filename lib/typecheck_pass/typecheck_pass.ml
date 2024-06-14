@@ -10,6 +10,7 @@ type state = {
   typemap : Type_map.t;
   next_typevar_id : int;
   constraints : type_equation list;
+  exception_type : typeT option;
 }
 
 module ThisPass = Passes.SingleError (struct
@@ -124,6 +125,12 @@ let add_sum_constraint t =
   let sum_t = TypeSum (l_t, r_t) in
   add_constraint sum_t t *> return (l_t, r_t, sum_t)
 
+let add_reference_constraint t =
+  let* el_t = new_typevar in
+  let ref_t = TypeRef el_t in
+  let* _ = add_constraint ref_t t in
+  return el_t
+
 (* --- Type checkers --- *)
 
 let check_equal_types expected_type actual_type =
@@ -167,7 +174,7 @@ let expect_a_tuple_with_element t index =
   match t with
   | TypeTuple component_types -> unpack_element component_types
   | TypeVar _ as t ->
-      let* component_types, _ = add_tuple_constraint t index in
+      let* component_types, _ = add_tuple_constraint t 2 in
       unpack_element component_types
   | _ -> error (Error_not_a_tuple t)
 
@@ -194,13 +201,13 @@ let expect_a_record_with_field t field_ident =
             (Error_unexpected_field_access
                { typeT = t; field_name = field_ident })
       | Some result_type -> return result_type)
-  | TypeVar _ -> Utils.not_implemented ()
+  | TypeVar _ -> failwith "Constraints for records not implemented"
   | _ -> error (Error_not_a_record t)
 
 let expect_a_record_with_fields t _ =
   match t with
   | TypeRecord t_field_types -> return t_field_types
-  | TypeVar _ -> Utils.not_implemented ()
+  | TypeVar _ -> failwith "Constraints for records not implemented"
   | t -> error (Error_unexpected_record t)
 
 let expect_a_list t err =
@@ -217,6 +224,14 @@ let expect_a_sum t err =
   | TypeVar _ as t ->
       let* l, r, _ = add_sum_constraint t in
       return (l, r)
+  | _ -> error err
+
+let expect_a_reference t err =
+  match t with
+  | TypeRef x -> return x
+  | TypeVar _ as t ->
+      let* el_t = add_reference_constraint t in
+      return el_t
   | _ -> error err
 
 (* --- Solve --- *)

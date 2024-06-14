@@ -82,23 +82,29 @@ and check_let expected_type pattern_bindings body_expr =
 (* - Tuple - *)
 
 and check_dot_tuple expected_type expr index =
-  let* expr_type = check_expr None expr in
-  let* element_type = expect_a_tuple_with_element expr_type index in
-  expect_equal_type expected_type element_type
+  if index <> 1 && index <> 2 then
+    Printf.failwithf "Tuples of length %d not supported" index ()
+  else
+    let* expr_type = check_expr None expr in
+    let* element_type = expect_a_tuple_with_element expr_type index in
+    expect_equal_type expected_type element_type
 
 and check_tuple expected_type (exprs : expr list) =
-  match expected_type with
-  | Some expected_type ->
-      let length = List.length exprs in
-      let* component_types =
-        expect_a_tuple_of_length expected_type length (fun _ ->
-            Error_unexpected_tuple { expected_type })
-      in
-      let type_expr_pairs = List.zip_exn component_types exprs in
-      check_exprs type_expr_pairs *> return (TypeTuple component_types)
-  | None ->
-      let* actual_component_types = many exprs ~f:(check_expr None) in
-      return (TypeTuple actual_component_types)
+  let length = List.length exprs in
+  if length <> 2 then
+    Printf.failwithf "Tuples of length %d not supported" length ()
+  else
+    match expected_type with
+    | Some expected_type ->
+        let* component_types =
+          expect_a_tuple_of_length expected_type length (fun _ ->
+              Error_unexpected_tuple { expected_type })
+        in
+        let type_expr_pairs = List.zip_exn component_types exprs in
+        check_exprs type_expr_pairs *> return (TypeTuple component_types)
+    | None ->
+        let* actual_component_types = many exprs ~f:(check_expr None) in
+        return (TypeTuple actual_component_types)
 
 (* - Record - *)
 
@@ -109,44 +115,9 @@ and check_dot_record expected_type record_expr field_ident =
 
 and check_record expected_type bindings =
   let* actual_field_types = check_unknown_record bindings in
-  match expected_type with
-  | Some expected_type ->
-      let* expected_field_types =
-        expect_a_record_with_fields expected_type actual_field_types
-      in
-      (* TODO: this code runs the check twice *)
-      check_known_type_record expected_field_types bindings
-  | None ->
-      let* field_types = check_unknown_record bindings in
-      return (TypeRecord field_types)
-
-and check_known_type_record record_field_types record_bindings =
-  let record_type = TypeRecord record_field_types in
-  let check_each_binding remaining_fields_typemap (ABinding (field_ident, expr))
-      =
-    match Type_map.get_type remaining_fields_typemap field_ident with
-    | None ->
-        error
-          (Error_unexpected_record_fields
-             { record_type; field_name = field_ident })
-    | Some field_t ->
-        check_expr (Some field_t) expr
-        *>
-        let new_typemap =
-          Type_map.remove remaining_fields_typemap field_ident
-        in
-        return new_typemap
-  in
-  let field_typemap = Type_map.of_record_fields record_field_types in
-  let* remaining_required_fields =
-    fold record_bindings ~init:field_typemap ~f:check_each_binding
-  in
-  match Map.to_alist remaining_required_fields with
-  | [] -> return record_type
-  | (field_name, _) :: _ ->
-      error
-        (Error_missing_record_fields
-           { record_type; field_name = StellaIdent field_name })
+  let record_t = TypeRecord actual_field_types in
+  let* _ = expect_equal_type expected_type record_t in
+  return record_t
 
 and check_unknown_record record_bindings =
   let check_each_binding (ABinding (ident, expr)) =
@@ -325,6 +296,65 @@ and check_equality expected_type left right =
 and check_sequence expected_type expr1 expr2 =
   check_expr (Some TypeUnit) expr1 *> check_expr expected_type expr2
 
+(* - References - *)
+
+and check_ref expected_type expr =
+  let* expr_t = check_expr None expr in
+  let ref_t = TypeRef expr_t in
+  expect_equal_type expected_type ref_t
+
+and check_deref expected_type expr =
+  let* arg_t = new_typevar in
+  let ref_t = TypeRef arg_t in
+  let* _ = expect_equal_type expected_type arg_t in
+  let* _ = check_expr (Some ref_t) expr in
+  return arg_t
+
+and check_const_memory expected_type =
+  let* arg_t = new_typevar in
+  let ref_t = TypeRef arg_t in
+  let* _ = expect_equal_type expected_type ref_t in
+  return ref_t
+
+and check_assign expected_type l r =
+  let* _ = expect_equal_type expected_type TypeUnit in
+  let* r_t = check_expr None r in
+  let ref_t = TypeRef r_t in
+  let* _ = check_expr (Some ref_t) l in
+  return TypeUnit
+
+(* - Exceptions - *)
+
+and check_panic expected_type =
+  let* t = new_typevar in
+  let* _ = expect_equal_type expected_type t in
+  return t
+
+and check_throw expected_type expr =
+  let* { exception_type; _ } = get in
+  match exception_type with
+  | None -> error Error_exception_type_not_declared
+  | Some exception_type ->
+      let* _ = check_expr (Some exception_type) expr in
+      let* bottom_t = new_typevar in
+      let* _ = expect_equal_type expected_type bottom_t in
+      return bottom_t
+
+and check_try_with expected_type try_expr with_expr =
+  let* t = check_expr expected_type try_expr in
+  let* _ = check_expr expected_type with_expr in
+  return t
+
+and check_try_catch expected_type try_expr pat catch_expr =
+  let* { exception_type; _ } = get in
+  match exception_type with
+  | None -> error Error_exception_type_not_declared
+  | Some exception_type ->
+      let* result_t = check_expr expected_type try_expr in
+      let case = AMatchCase (pat, catch_expr) in
+      let* _ = check_match_case expected_type exception_type case in
+      return result_t
+
 (* - Main visitor - *)
 
 and check_expr expected_type expr =
@@ -382,6 +412,18 @@ and check_expr expected_type expr =
   (* Recursion *)
   | Fix expr -> check_fix expected_type expr
   | NatRec (n, z, s) -> check_nat_rec expected_type n z s
+  (* References *)
+  | Ref expr -> check_ref expected_type expr
+  | Deref expr -> check_deref expected_type expr
+  | ConstMemory _ -> check_const_memory expected_type
+  | Assign (l, r) -> check_assign expected_type l r
+  (* Exceptions *)
+  | Panic -> check_panic expected_type
+  | Throw expr -> check_throw expected_type expr
+  | TryWith (try_expr, catch_expr) ->
+      check_try_with expected_type try_expr catch_expr
+  | TryCatch (try_expr, pat, catch_expr) ->
+      check_try_catch expected_type try_expr pat catch_expr
   | _ -> expr_not_implemented expr
 
 and check_exprs (type_expr_pairs : (typeT * expr) list) : unit t =
@@ -437,12 +479,14 @@ let check_prog (AProgram (_, _, decls)) =
 
 let check_program prog : unit pass_result =
   let global_type_map = make_globals_type_map prog in
+  let exception_type = collect_exception_type prog in
   let init =
     {
       stacktrace = [];
       typemap = global_type_map;
       next_typevar_id = 0;
       constraints = [];
+      exception_type;
     }
   in
   run_pass ~init (check_prog prog)

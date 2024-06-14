@@ -181,6 +181,9 @@ and pass_decl = function
   | DeclFunGeneric _ as t ->
       (* When universal types are enabled, auto is not supported *)
       return t
+  | DeclExceptionType t ->
+      let* t = pass_type t in
+      return (DeclExceptionType t)
   | _ -> Utils.not_implemented ()
 
 let pass_program (AProgram (l, exts, decls)) =
